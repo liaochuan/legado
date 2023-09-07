@@ -31,4 +31,7 @@ object EventBus {
     const val UP_SEEK_BAR = "upSeekBar"
     const val READ_ALOUD_PLAY = "readAloudPlay"
     const val EXPORT_BOOK = "exportBook"
+    const val SCREEN_ON = "screenOn"
+    const val SCREEN_OFF = "screenOff"
+    const val USER_PRESENT = "userPresent"
 }

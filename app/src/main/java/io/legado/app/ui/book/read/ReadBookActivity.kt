@@ -2,6 +2,8 @@ package io.legado.app.ui.book.read
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -37,9 +39,11 @@ import io.legado.app.lib.dialogs.SelectItem
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.theme.accentColor
+import io.legado.app.model.Debug.log
 import io.legado.app.model.ReadAloud
 import io.legado.app.model.ReadBook
 import io.legado.app.model.analyzeRule.AnalyzeRule
+import io.legado.app.receiver.ScreenStatusReceiver
 import io.legado.app.receiver.TimeBatteryReceiver
 import io.legado.app.service.BaseReadAloudService
 import io.legado.app.ui.about.AppLogDialog
@@ -174,6 +178,7 @@ class ReadBookActivity : BaseReadBookActivity(),
 
     //恢复跳转前进度对话框的交互结果
     private var confirmRestoreProcess: Boolean? = null
+    private val screenStatusReceiver = ScreenStatusReceiver()
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onActivityCreated(savedInstanceState: Bundle?) {
@@ -211,6 +216,7 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             finish()
         }
+        registerReceiver(screenStatusReceiver, screenStatusReceiver.filter)
     }
 
     override fun onPostCreate(savedInstanceState: Bundle?) {
@@ -235,6 +241,23 @@ class ReadBookActivity : BaseReadBookActivity(),
         super.onConfigurationChanged(newConfig)
         upSystemUiVisibility()
         binding.readView.upStatusBar()
+    }
+
+    /**
+     * 判断某个界面是否在前台,返回true，为显示,否则不是
+     */
+    @SuppressLint("ServiceCast")
+    fun isForeground(context: Context): Boolean {
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val list = am.getRunningTasks(1)
+        if (list != null && list.size > 0) {
+            val cpn = list[0].topActivity
+            if (cpn != null) {
+                if (context.javaClass.name == cpn.className)
+                    return true
+            }
+        }
+        return false
     }
 
     override fun onResume() {
@@ -1371,6 +1394,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         if (!BuildConfig.DEBUG) {
             Backup.autoBack(this)
         }
+        unregisterReceiver(screenStatusReceiver)
     }
 
     override fun observeLiveBus() = binding.run {
@@ -1437,6 +1461,24 @@ class ReadBookActivity : BaseReadBookActivity(),
         }
         observeEvent<Boolean>(EventBus.UP_SEEK_BAR) {
             binding.readMenu.upSeekBar()
+        }
+        observeEvent<String>(EventBus.SCREEN_ON) {
+            if (isForeground(this@ReadBookActivity)) {
+                AppLog.put("亮屏了", null, true)
+                log("亮屏了")
+            }
+        }
+        observeEvent<String>(EventBus.SCREEN_OFF) {
+            if (isForeground(this@ReadBookActivity)) {
+                AppLog.put("息屏了", null, true)
+                log("息屏了")
+            }
+        }
+        observeEvent<String>(EventBus.USER_PRESENT) {
+            if (isForeground(this@ReadBookActivity)) {
+                AppLog.put("解锁了", null, true)
+                log("解锁了")
+            }
         }
     }
 
