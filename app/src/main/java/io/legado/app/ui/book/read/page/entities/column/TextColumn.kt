@@ -45,14 +45,15 @@ data class TextColumn(
 
     override var highlightStyle: HighlightStyle? = null
         set(value) {
-            if (field != value) {
+            val normalized = value?.normalized()
+            if (field != normalized) {
                 textLine.invalidate()
                 val before = field?.needsPerColumnDraw == true
-                val after = value?.needsPerColumnDraw == true
+                val after = normalized?.needsPerColumnDraw == true
                 if (!before && after) textLine.styledColumnCount++
                 else if (before && !after) textLine.styledColumnCount--
             }
-            field = value
+            field = normalized
         }
 
     override fun draw(view: ContentTextView, canvas: Canvas) {
@@ -77,7 +78,7 @@ data class TextColumn(
             textPaint.color = baseTextColor
         }
         val styledPaint = style?.takeIf {
-            it.textColor != 0 || it.bold || it.italic
+            it.textColor != 0 || it.bold || it.italic || it.shadow != null
         }?.let { HighlightDraw.obtainTextPaint(textPaint, it, textColor) }
         val drawPaint = styledPaint ?: textPaint
         val y = textLine.lineBase - textLine.lineTop
