@@ -5,6 +5,7 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
+import androidx.appcompat.widget.SearchView
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -19,12 +20,14 @@ import io.legado.app.help.SourceSharePassphrase
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.sourceSharePassphraseButton
 import io.legado.app.lib.theme.primaryColor
+import io.legado.app.lib.theme.primaryTextColor
 import io.legado.app.model.AutoTask
 import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.widget.SelectActionBar
 import io.legado.app.ui.widget.recycler.DragSelectTouchHelper
 import io.legado.app.ui.widget.recycler.VerticalDivider
 import io.legado.app.utils.CronSchedule
+import io.legado.app.utils.applyTint
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.ACache
 import io.legado.app.utils.isAbsUrl
@@ -42,10 +45,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class AutoTaskActivity : BaseActivity<ActivityAutoTaskBinding>(), AutoTaskAdapter.Callback,
-    SelectActionBar.CallBack, PopupMenu.OnMenuItemClickListener {
+    SelectActionBar.CallBack, PopupMenu.OnMenuItemClickListener, SearchView.OnQueryTextListener {
 
     override val binding by viewBinding(ActivityAutoTaskBinding::inflate)
     private val adapter by lazy { AutoTaskAdapter(this, this) }
+    private val searchView: SearchView by lazy {
+        binding.titleBar.findViewById(R.id.search_view)
+    }
+    private var allRules = emptyList<AutoTaskRule>()
     private val importRecordKey = "autoTaskRecordKey"
     private val importDoc = registerForActivityResult(HandleFileContract()) {
         it.uri?.let { uri -> showDialogFragment(ImportAutoTaskDialog(uri.toString())) }
@@ -79,12 +86,15 @@ class AutoTaskActivity : BaseActivity<ActivityAutoTaskBinding>(), AutoTaskAdapte
         binding.recyclerView.adapter = adapter
         binding.recyclerView.addItemDecoration(VerticalDivider(this))
         binding.recyclerView.setEdgeEffectColor(primaryColor)
+        searchView.applyTint(primaryTextColor)
+        searchView.queryHint = getString(R.string.search)
+        searchView.setOnQueryTextListener(this)
         DragSelectTouchHelper(adapter.dragSelectCallback).apply {
             setSlideArea(16, 50)
             attachToRecyclerView(binding.recyclerView)
             activeSlideSelect()
         }
-        binding.selectActionBar.setMainActionText(R.string.auto_task_batch_cron)
+        binding.selectActionBar.setMainActionText(R.string.delete)
         binding.selectActionBar.inflateMenu(R.menu.auto_task_sel)
         binding.selectActionBar.setCallBack(this)
         binding.selectActionBar.setOnMenuItemClickListener(this)
@@ -94,11 +104,30 @@ class AutoTaskActivity : BaseActivity<ActivityAutoTaskBinding>(), AutoTaskAdapte
             appDb.autoTaskRuleDao.flowAll()
                 .flowOn(Dispatchers.IO)
                 .collectLatest { rules ->
-                    adapter.setItems(rules, adapter.diffCallback)
-                    binding.tvEmpty.isVisible = rules.isEmpty()
+                    allRules = rules
+                    adapter.retainExistingSelections(rules)
+                    updateTaskList()
                 }
         }
     }
+
+    private fun updateTaskList() {
+        val query = searchView.query.toString().trim()
+        val filtered = if (query.isEmpty()) {
+            allRules
+        } else {
+            allRules.filter { it.name.contains(query, ignoreCase = true) }
+        }
+        adapter.setItems(filtered, adapter.diffCallback)
+        binding.tvEmpty.isVisible = filtered.isEmpty()
+    }
+
+    override fun onQueryTextChange(newText: String?): Boolean {
+        updateTaskList()
+        return false
+    }
+
+    override fun onQueryTextSubmit(query: String?): Boolean = false
 
     private fun showBatchCronDialog() {
         val ids = adapter.selection.map { it.id }
@@ -121,6 +150,27 @@ class AutoTaskActivity : BaseActivity<ActivityAutoTaskBinding>(), AutoTaskAdapte
                 AutoTask.updateCron(ids, cron, this@AutoTaskActivity)
             }
             dialog.dismiss()
+        }
+    }
+
+    private fun updateSelectionEnabled(enabled: Boolean) {
+        val ids = adapter.selection.map { it.id }
+        if (ids.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            AutoTask.updateEnabled(ids, enabled, this@AutoTaskActivity)
+        }
+    }
+
+    private fun deleteSelection() {
+        val ids = adapter.selection.map { it.id }
+        if (ids.isEmpty()) return
+        alert(R.string.delete, R.string.sure_del) {
+            yesButton {
+                lifecycleScope.launch(Dispatchers.IO) {
+                    AutoTask.delete(ids, this@AutoTaskActivity)
+                }
+            }
+            noButton()
         }
     }
 
@@ -246,21 +296,26 @@ class AutoTaskActivity : BaseActivity<ActivityAutoTaskBinding>(), AutoTaskAdapte
     }
 
     override fun onClickSelectBarMainAction() {
-        showBatchCronDialog()
+        deleteSelection()
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
-        if (item.itemId == R.id.menu_export_selection) {
-            val rules = adapter.selection
-            lifecycleScope.launch {
-                val json = withContext(Dispatchers.IO) { AutoTask.exportJson(rules) }
-                exportDoc.launch {
-                    mode = HandleFileContract.EXPORT
-                    fileData = HandleFileContract.FileData(
-                        "exportAutoTaskSelection.json",
-                        json,
-                        "application/json"
-                    )
+        when (item.itemId) {
+            R.id.menu_batch_cron -> showBatchCronDialog()
+            R.id.menu_enable_selection -> updateSelectionEnabled(true)
+            R.id.menu_disable_selection -> updateSelectionEnabled(false)
+            R.id.menu_export_selection -> {
+                val rules = adapter.selection
+                lifecycleScope.launch {
+                    val json = withContext(Dispatchers.IO) { AutoTask.exportJson(rules) }
+                    exportDoc.launch {
+                        mode = HandleFileContract.EXPORT
+                        fileData = HandleFileContract.FileData(
+                            "exportAutoTaskSelection.json",
+                            json,
+                            "application/json"
+                        )
+                    }
                 }
             }
         }
