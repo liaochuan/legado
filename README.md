@@ -5,11 +5,10 @@
 
 <div align="center">
   
-Legado
 Legado 是一款免费的 Android 平台开源小说阅读器。
 </div>
 
-# Sponsor-赞助商
+# Sponsor
 
 > 感谢 [PiPio AI 中转站](https://pipio.io/offer/miaogongzi) 对项目的赞助支持。
 
