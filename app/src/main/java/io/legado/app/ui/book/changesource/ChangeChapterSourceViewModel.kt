@@ -80,11 +80,12 @@ class ChangeChapterSourceViewModel(application: Application) :
                     false,
                 )
             }
+            val mergedContent = mergeChapterSourceContents(contents)
             ensureActive()
             BookHelp.saveText(
                 originalBook,
                 originalChapter,
-                mergeChapterSourceContents(contents),
+                mergedContent,
             )
         }.onSuccess {
             success.invoke()
