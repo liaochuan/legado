@@ -6,12 +6,16 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.addCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.Lifecycle.State.RESUMED
 import androidx.lifecycle.Lifecycle.State.STARTED
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStateAtLeast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import io.legado.app.R
@@ -26,7 +30,6 @@ import io.legado.app.data.entities.SearchBook
 import io.legado.app.databinding.DialogChapterChangeSourceBinding
 import io.legado.app.help.book.BookHelp
 import io.legado.app.help.config.AppConfig
-import io.legado.app.help.coroutine.Coroutine
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.theme.elevation
 import io.legado.app.lib.theme.primaryColor
@@ -88,36 +91,12 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     private val tocAdapter by lazy {
         ChangeChapterTocAdapter(requireContext(), this)
     }
-    private val contentSuccess: (content: String) -> Unit = {
-        binding.loadingToc.gone()
-        callBack?.replaceContent(it)
-        dismissAllowingStateLoss()
-    }
+    private var searchFinishDialog: AlertDialog? = null
+    private var adapterDataObserver: RecyclerView.AdapterDataObserver? = null
     private var targetBook: Book? = null
-    private var originalChapters = emptyList<BookChapter>()
-    private var originalChapter: BookChapter? = null
     private var tocLoading = false
+    private var contentLoading = false
     private var batchCaching = false
-    private var cacheTask: Coroutine<*>? = null
-    private val searchFinishCallback: (isEmpty: Boolean) -> Unit = {
-        if (it) {
-            val searchGroup = AppConfig.searchGroup
-            if (searchGroup.isNotEmpty()) {
-                lifecycleScope.launch {
-                    context?.alert("搜索结果为空") {
-                        setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
-                        noButton()
-                        yesButton {
-                            AppConfig.searchGroup = ""
-                            upGroupMenu()
-                            viewModel.startSearch()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     override fun onStart() {
         super.onStart()
         setLayout(1f, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -132,33 +111,35 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         initRecyclerView()
         initSearchView()
         initBottomBar()
-        initBatchMode()
         initLiveData()
-        viewModel.searchFinishCallback = searchFinishCallback
-        activity?.onBackPressedDispatcher?.addCallback(this) {
+        initBatchMode()
+        activity?.onBackPressedDispatcher?.addCallback(viewLifecycleOwner) {
             if (batchCaching) {
-                cacheTask?.cancel()
-                cacheTask = null
-                setBatchCaching(false)
+                viewModel.cancelCacheContents()
                 return@addCallback
             }
             if (batchMode && tocLoading) return@addCallback
             if (binding.clToc.isVisible) {
                 binding.clToc.gone()
+                viewModel.clearToc()
                 return@addCallback
             }
             dismissAllowingStateLoss()
         }
     }
 
-    override fun onDestroy() {
-        cacheTask?.cancel()
-        super.onDestroy()
-        viewModel.searchFinishCallback = null
+    override fun onDestroyView() {
+        adapterDataObserver?.let(searchBookAdapter::unregisterAdapterDataObserver)
+        adapterDataObserver = null
+        binding.recyclerView.adapter = null
+        binding.recyclerViewToc.adapter = null
+        searchFinishDialog?.dismiss()
+        searchFinishDialog = null
+        super.onDestroyView()
     }
 
     private fun showTitle() {
-        binding.toolBar.title = originalChapter?.title ?: viewModel.chapterTitle
+        binding.toolBar.title = viewModel.currentOriginalChapter?.title ?: viewModel.chapterTitle
         if (batchMode) {
             binding.toolBar.subtitle = getString(
                 R.string.chapter_source_selected_count,
@@ -184,10 +165,11 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         binding.ivHideToc.setOnClickListener {
             if (batchMode && (tocLoading || batchCaching)) return@setOnClickListener
             binding.clToc.gone()
+            viewModel.clearToc()
         }
         binding.flHideToc.elevation = requireContext().elevation
         binding.btnBatchSkip.setOnClickListener {
-            originalChapter?.let(::advanceOriginalChapter)
+            viewModel.currentOriginalChapter?.let(::advanceOriginalChapter)
         }
         binding.btnBatchCacheNext.setOnClickListener {
             cacheSelectedChapters()
@@ -198,21 +180,22 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     }
 
     private fun initRecyclerView() {
-        binding.recyclerView.addItemDecoration(VerticalDivider(requireContext()))
-        binding.recyclerView.adapter = searchBookAdapter
-        searchBookAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+        val recyclerView = binding.recyclerView
+        recyclerView.addItemDecoration(VerticalDivider(requireContext()))
+        recyclerView.adapter = searchBookAdapter
+        adapterDataObserver = object : RecyclerView.AdapterDataObserver() {
             override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
                 if (positionStart == 0) {
-                    binding.recyclerView.scrollToPosition(0)
+                    recyclerView.scrollToPosition(0)
                 }
             }
 
             override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) {
                 if (toPosition == 0) {
-                    binding.recyclerView.scrollToPosition(0)
+                    recyclerView.scrollToPosition(0)
                 }
             }
-        })
+        }.also(searchBookAdapter::registerAdapterDataObserver)
         binding.recyclerViewToc.adapter = tocAdapter
     }
 
@@ -259,23 +242,11 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
         binding.toolBar.accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         updateBatchActions()
         val oldBook = callBack?.oldBook ?: return
-        viewModel.getOriginalChapters(oldBook.bookUrl, { chapters ->
-            originalChapters = chapters
-            originalChapter = chapters.firstOrNull { it.index == viewModel.chapterIndex }
-            if (originalChapter == null) {
-                toastOnUi(R.string.chapter_list_empty)
-                dismissAllowingStateLoss()
-                return@getOriginalChapters
-            }
-            showTitle()
-            updateBatchActions()
-        }, { message ->
-            toastOnUi(message)
-            dismissAllowingStateLoss()
-        })
+        viewModel.loadOriginalChapters(oldBook.bookUrl)
     }
 
     private fun initLiveData() {
+        val owner = viewLifecycleOwner
         viewModel.searchStateData.observe(viewLifecycleOwner) {
             binding.refreshProgressBar.isAutoLoading = it
             if (it) {
@@ -291,18 +262,157 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
             }
             binding.toolBar.menu.applyTint(requireContext())
         }
-        lifecycleScope.launch {
-            lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
+        viewModel.searchFinishData.observe(owner) { event ->
+            owner.lifecycleScope.launch {
+                owner.lifecycle.withStateAtLeast(RESUMED) {
+                    showEmptySearchGroupDialog(event, owner)
+                }
+            }
+        }
+        viewModel.originalChaptersState.observe(owner, ::showOriginalChaptersState)
+        viewModel.tocState.observe(owner, ::showTocState)
+        viewModel.contentLoading.observe(owner) { loading ->
+            contentLoading = loading
+            updateLoadingIndicator()
+        }
+        viewModel.contentResult.observe(owner) { event ->
+            owner.lifecycleScope.launch {
+                owner.lifecycle.withStateAtLeast(RESUMED) {
+                    when (val result = event.take()) {
+                        is ChapterContentResult.Success -> {
+                            val callback = callBack ?: return@withStateAtLeast
+                            callback.replaceContent(result.content)
+                            dismissAllowingStateLoss()
+                        }
+
+                        is ChapterContentResult.Error -> {
+                            binding.clToc.gone()
+                            viewModel.clearToc()
+                            toastOnUi(result.message)
+                        }
+
+                        null -> Unit
+                    }
+                }
+            }
+        }
+        viewModel.changeSourceResult.observe(owner) { event ->
+            owner.lifecycleScope.launch {
+                owner.lifecycle.withStateAtLeast(RESUMED) {
+                    when (val result = event.take()) {
+                        is SourceChangeResult.Success -> {
+                            val callback = callBack ?: return@withStateAtLeast
+                            val sourceViewModel = viewModel
+                            val completion = SourceChangeCompletion(
+                                result.deleteAfterChange,
+                                sourceViewModel::del,
+                            )
+                            callback.changeTo(
+                                result.source,
+                                result.book,
+                                result.toc,
+                                completion::success,
+                            )
+                            if (result.dismissDialog) dismissAllowingStateLoss()
+                        }
+
+                        is SourceChangeResult.Error -> {
+                            AppLog.put(
+                                "自动换源失败\n${result.throwable.localizedMessage}",
+                                result.throwable,
+                                true,
+                            )
+                        }
+
+                        null -> Unit
+                    }
+                }
+            }
+        }
+        viewModel.batchCaching.observe(owner, ::setBatchCaching)
+        viewModel.batchCacheResult.observe(owner) { event ->
+            owner.lifecycleScope.launch {
+                owner.lifecycle.withStateAtLeast(RESUMED) {
+                    when (val result = event.take()) {
+                        is ChapterCacheResult.Success -> showCacheSuccess(result)
+                        is ChapterCacheResult.Error -> toastOnUi(result.message)
+                        null -> Unit
+                    }
+                }
+            }
+        }
+        owner.lifecycleScope.launch {
+            owner.lifecycle.currentStateFlow.first { it.isAtLeast(STARTED) }
             viewModel.searchDataFlow.conflate().collect {
                 searchBookAdapter.setItems(it)
                 delay(1000)
             }
         }
-        lifecycleScope.launch {
+        owner.lifecycleScope.launch {
             appDb.bookSourceDao.flowEnabledGroups().conflate().collect {
                 groups.clear()
                 groups.addAll(it)
                 upGroupMenu()
+            }
+        }
+    }
+
+    private fun showEmptySearchGroupDialog(
+        event: PendingEvent<Boolean>,
+        owner: LifecycleOwner,
+    ) {
+        if (event.peek() != true) {
+            event.take()
+            return
+        }
+        val searchGroup = AppConfig.searchGroup
+        if (searchGroup.isEmpty()) {
+            event.take()
+            return
+        }
+        if (searchFinishDialog != null) return
+        searchFinishDialog = context?.alert("搜索结果为空") {
+            setMessage("${searchGroup}分组搜索结果为空,是否切换到全部分组")
+            noButton { event.take() }
+            yesButton {
+                event.take()
+                AppConfig.searchGroup = ""
+                viewModel.startSearch()
+                owner.lifecycleScope.launch {
+                    upGroupMenu()
+                }
+            }
+            onCancelled { event.take() }
+            onDismiss { dialog ->
+                if (searchFinishDialog === dialog) searchFinishDialog = null
+            }
+        }
+    }
+
+    private fun showOriginalChaptersState(state: OriginalChaptersState) {
+        when (state) {
+            OriginalChaptersState.Loading -> Unit
+            is OriginalChaptersState.Success -> {
+                when {
+                    viewModel.isBatchFinished -> {
+                        updateBatchActions()
+                    }
+
+                    viewModel.currentOriginalChapter == null -> {
+                        toastOnUi(R.string.chapter_list_empty)
+                        dismissAllowingStateLoss()
+                    }
+
+                    else -> {
+                        showTitle()
+                        updateBatchActions()
+                    }
+                }
+            }
+
+            is OriginalChaptersState.Error -> {
+                toastOnUi(state.message)
+                dismissAllowingStateLoss()
             }
         }
     }
@@ -377,36 +487,49 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     }
 
     override fun openToc(searchBook: SearchBook) {
-        tocAdapter.clearSelection()
-        tocAdapter.setItems(null)
-        binding.clToc.visible()
-        if (batchMode) {
-            setTocLoading(true)
-        } else {
-            binding.loadingToc.visible()
-        }
-        val book = searchBook.toBook()
-        targetBook = book
-        viewModel.getToc(book, { toc: List<BookChapter>, _: BookSource ->
-            tocAdapter.durChapterIndex =
-                BookHelp.getDurChapter(
+        viewModel.loadToc(searchBook.toBook())
+    }
+
+    private fun showTocState(state: ChapterTocState) {
+        when (state) {
+            ChapterTocState.Idle -> {
+                targetBook = null
+                setTocLoading(false)
+            }
+
+            is ChapterTocState.Loading -> {
+                targetBook = state.book
+                tocAdapter.clearSelection()
+                tocAdapter.setItems(null)
+                binding.clToc.visible()
+                setTocLoading(true)
+            }
+
+            is ChapterTocState.Success -> {
+                targetBook = state.book
+                binding.clToc.visible()
+                setTocLoading(false)
+                tocAdapter.durChapterIndex = BookHelp.getDurChapter(
                     viewModel.chapterIndex,
                     viewModel.chapterTitle,
-                    toc,
+                    state.toc,
                     searchAllChapterNumbers = true,
                 )
-            if (batchMode) {
-                setTocLoading(false)
-            } else {
-                binding.loadingToc.gone()
+                tocAdapter.setItems(state.toc)
+                binding.recyclerViewToc.scrollToPosition(tocAdapter.durChapterIndex - 5)
             }
-            tocAdapter.setItems(toc)
-            binding.recyclerViewToc.scrollToPosition(tocAdapter.durChapterIndex - 5)
-        }, {
-            if (batchMode) setTocLoading(false)
-            binding.clToc.gone()
-            AppLog.put("单章换源获取目录出错\n$it", it, true)
-        })
+
+            is ChapterTocState.Error -> {
+                AppLog.put(
+                    "单章换源获取目录出错\n${state.throwable.localizedMessage}",
+                    state.throwable,
+                    true,
+                )
+                setTocLoading(false)
+                binding.clToc.gone()
+                viewModel.clearToc()
+            }
+        }
     }
 
     override val oldBookUrl: String?
@@ -431,11 +554,10 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     }
 
     override fun deleteSource(searchBook: SearchBook) {
-        viewModel.del(searchBook)
         if (oldBookUrl == searchBook.bookUrl) {
-            viewModel.autoChangeSource(callBack?.oldBook?.type) { book, toc, source ->
-                callBack?.changeTo(source, book, toc)
-            }
+            viewModel.autoChangeSource(callBack?.oldBook?.type, searchBook)
+        } else {
+            viewModel.del(searchBook)
         }
     }
 
@@ -450,49 +572,52 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
     override fun clickChapter(bookChapter: BookChapter, nextChapterUrl: String?) {
         if (batchMode) return
         targetBook?.let {
-            binding.loadingToc.visible()
-            viewModel.getContent(it, bookChapter, nextChapterUrl, contentSuccess) { msg ->
-                binding.loadingToc.gone()
-                binding.clToc.gone()
-                toastOnUi(msg)
-            }
+            viewModel.loadContent(it, bookChapter, nextChapterUrl)
         }
     }
 
     override fun selectionChanged() {
-        showTitle()
-        updateBatchActions()
+        viewLifecycleOwnerLiveData.value?.lifecycleScope?.launch {
+            showTitle()
+            updateBatchActions()
+        }
     }
 
     private fun cacheSelectedChapters() {
         val sourceBook = targetBook ?: return
         val sourceChapters = tocAdapter.selectedChapters
         val originalBook = callBack?.oldBook ?: return
-        val chapter = originalChapter ?: return
+        val chapter = viewModel.currentOriginalChapter ?: return
         if (sourceChapters.isEmpty() || tocLoading || batchCaching) return
         val lastSelectedPosition = tocAdapter.lastSelectedPosition
-        setBatchCaching(true)
-        cacheTask = viewModel.cacheContents(
+        viewModel.cacheContents(
             sourceBook,
             sourceChapters,
             originalBook,
             chapter,
-            success = {
-                cacheTask = null
-                setBatchCaching(false)
-                callBack?.contentCached(chapter.index)
-                advanceOriginalChapter(chapter, lastSelectedPosition + 1)
-            },
-            error = { message ->
-                cacheTask = null
-                setBatchCaching(false)
-                toastOnUi(message)
-            },
+            lastSelectedPosition + 1,
         )
     }
 
+    private fun showCacheSuccess(result: ChapterCacheResult.Success) {
+        callBack?.contentCached(result.cachedChapterIndex)
+        tocAdapter.clearSelection()
+        if (tocAdapter.itemCount > 0) {
+            binding.recyclerViewToc.scrollToPosition(
+                result.targetPosition.coerceAtMost(tocAdapter.itemCount - 1)
+            )
+        }
+        if (result.nextChapter == null) {
+            toastOnUi(R.string.chapter_source_finished)
+            dismissAllowingStateLoss()
+            return
+        }
+        showTitle()
+        updateBatchActions()
+    }
+
     private fun advanceOriginalChapter(chapter: BookChapter, targetPosition: Int? = null) {
-        val nextChapter = nextChapterSourceOriginal(originalChapters, chapter.index)
+        val nextChapter = viewModel.advanceOriginalChapter(chapter)
         tocAdapter.clearSelection()
         if (targetPosition != null && tocAdapter.itemCount > 0) {
             binding.recyclerViewToc.scrollToPosition(
@@ -504,28 +629,29 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
             dismissAllowingStateLoss()
             return
         }
-        originalChapter = nextChapter
-        viewModel.chapterIndex = nextChapter.index
-        viewModel.chapterTitle = nextChapter.title
         showTitle()
         updateBatchActions()
     }
 
     private fun setTocLoading(loading: Boolean) {
         tocLoading = loading
-        binding.loadingToc.isVisible = loading
+        updateLoadingIndicator()
         updateBatchActions()
     }
 
     private fun setBatchCaching(caching: Boolean) {
         batchCaching = caching
-        binding.loadingToc.isVisible = caching
+        updateLoadingIndicator()
         updateBatchActions()
+    }
+
+    private fun updateLoadingIndicator() {
+        binding.loadingToc.isVisible = tocLoading || contentLoading || batchCaching
     }
 
     private fun updateBatchActions() {
         if (!batchMode) return
-        val hasOriginalChapter = originalChapter != null
+        val hasOriginalChapter = viewModel.currentOriginalChapter != null
         val busy = tocLoading || batchCaching
         tocAdapter.selectionEnabled = !busy
         binding.ivHideToc.isEnabled = !busy
@@ -573,7 +699,12 @@ class ChangeChapterSourceDialog() : BaseDialogFragment(R.layout.dialog_chapter_c
 
     interface CallBack {
         val oldBook: Book?
-        fun changeTo(source: BookSource, book: Book, toc: List<BookChapter>)
+        fun changeTo(
+            source: BookSource,
+            book: Book,
+            toc: List<BookChapter>,
+            onSuccess: () -> Unit,
+        )
         fun replaceContent(content: String)
         fun contentCached(chapterIndex: Int)
     }
