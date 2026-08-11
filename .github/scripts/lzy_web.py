@@ -1,5 +1,9 @@
-import requests, os, datetime, sys
-
+#import requests, os, datetime, sys, time
+import os
+import datetime
+import sys
+import time
+import requests
 # Cookie 中 phpdisk_info 的值
 cookie_phpdisk_info = os.environ.get('phpdisk_info')
 # Cookie 中 ylogin 的值
@@ -9,7 +13,7 @@ cookie_ylogin = os.environ.get('ylogin')
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4389.72 Safari/537.36 Edg/89.0.774.45',
     'Accept-Language': 'zh-CN,zh;q=0.9',
-    'Referer': 'https://pc.woozooo.com/account.php?action=login'
+    'Referer': 'https://accounts.woozooo.com/accounts.php?action=login&ref=pc.woozooo.com'
 }
 
 # 小饼干
@@ -28,7 +32,7 @@ def log(msg):
 
 # 检查是否已登录
 def login_by_cookie():
-    url_account = "https://pc.woozooo.com/account.php"
+    url_account = "https://accounts.woozooo.com/accounts.php"
     if cookie['phpdisk_info'] is None:
         log('ERROR: 请指定 Cookie 中 phpdisk_info 的值！')
         return False
@@ -47,55 +51,73 @@ def login_by_cookie():
 # 上传文件
 def upload_file(file_dir, folder_id):
     file_name = os.path.basename(file_dir)
-    url_upload = "https://up.woozooo.com/fileup.php"
-    headers['Referer'] = f'https://up.woozooo.com/mydisk.php?item=files&action=index&u={cookie_ylogin}'
+    #url_upload = "https://up.woozooo.com/fileup.php"
+    url_upload = "https://pc.woozooo.com/html5up.php"
+    headers['Referer'] = f'https://pc.woozooo.com/mydisk.php?item=files&action=index&u={cookie_ylogin}'
     post_data = {
-        "task": "1",
-        "folder_id": folder_id,
-        "id": "WU_FILE_0",
-        "name": file_name,
+        'task': '1',
+        'vie': '2',
+        've': '2',
+        'id': 'WU_FILE_2',
+        "name": '{file_name}',
+        "folder_id_bb_n": folder_id,
     }
-    with open(file_dir, "rb") as upload_stream:
-        files = {'upload_file': (file_name, upload_stream, 'application/octet-stream')}
-        res = requests.post(url_upload, data=post_data, files=files, headers=headers, cookies=cookie, timeout=120).json()
-    log(f"{file_dir} -> {res['info']}")
-    return res['zt'] == 1
+    files = {'upload_file': (file_name, open(file_dir, "rb"), 'application/octet-stream')}
+
+    retry_time = 0
+    retry_time_max = 2  # 最大重试次数
+    while True:
+        if retry_time > retry_time_max:
+            return False
+        log(f'开始第{retry_time+1}次请求')
+        try:
+            response = requests.post(url_upload, data=post_data, files=files, headers=headers, cookies=cookie, timeout=3600)
+            log(f'response -> {response.text}')
+            res = response.json()
+            log(f"{file_dir} -> {res['info']}")
+            if res['zt'] == 1:
+                return True
+            else:
+                retry_time += 1
+                time.sleep(2)
+        except Exception as e:
+            log(f'第{retry_tim+1}次请求异常: {e}')
+            retry_time += 1
+            time.sleep(2)
 
 
 # 上传文件夹内的文件
 def upload_folder(folder_dir, folder_id):
     file_list = sorted(os.listdir(folder_dir), reverse=True)
-    success = True
     for file in file_list:
         path = os.path.join(folder_dir, file)
         if os.path.isfile(path):
-            success = upload_file(path, folder_id) and success
+            upload_file(path, folder_id)
         else:
-            success = upload_folder(path, folder_id) and success
-    return success
+            upload_folder(path, folder_id)
 
 
 # 上传
 def upload(dir, folder_id):
     if dir is None:
         log('ERROR: 请指定上传的文件路径')
-        return False
+        return
     if folder_id is None:
         log('ERROR: 请指定蓝奏云的文件夹id')
-        return False
+        return
     if os.path.isfile(dir):
-        return upload_file(dir, str(folder_id))
-    return upload_folder(dir, str(folder_id))
-
-
-def main(argv):
-    if len(argv) != 2:
-        log('ERROR: 参数错误,请以这种格式重新尝试\npython lzy_web.py 需上传的路径 蓝奏云文件夹id')
-        return 2
-    if not login_by_cookie():
-        return 1
-    return 0 if upload(argv[0], argv[1]) else 1
+        upload_file(dir, str(folder_id))
+    else:
+        upload_folder(dir, str(folder_id))
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    argv = sys.argv[1:]
+    if len(argv) != 2:
+        log('ERROR: 参数错误,请以这种格式重新尝试\npython lzy_web.py 需上传的路径 蓝奏云文件夹id')
+    # 需上传的路径
+    upload_path = argv[0]
+    # 蓝奏云文件夹id
+    lzy_folder_id = argv[1]
+    if login_by_cookie():
+        upload(upload_path, lzy_folder_id)
