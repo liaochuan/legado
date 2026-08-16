@@ -145,7 +145,6 @@ import io.legado.app.utils.invisible
 import io.legado.app.utils.isAbsUrl
 import io.legado.app.utils.isTrue
 import io.legado.app.utils.launch
-import io.legado.app.utils.navigationBarGravity
 import io.legado.app.utils.observeEvent
 import io.legado.app.utils.observeEventSticky
 import io.legado.app.utils.postEvent
@@ -963,12 +962,9 @@ class ReadBookActivity : BaseReadBookActivity(),
      * 显示文本操作菜单
      */
     override fun showTextActionMenu() {
-        val navigationBarHeight =
-            if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
-                binding.navigationBar.height else 0
         textActionMenu.show(
             binding.textMenuPosition,
-            binding.root.height + navigationBarHeight,
+            binding.root.rootView.height,
             binding.textMenuPosition.x.toInt(),
             binding.textMenuPosition.y.toInt(),
             binding.cursorLeft.y.toInt() + binding.cursorLeft.height,
@@ -2195,12 +2191,9 @@ class ReadBookActivity : BaseReadBookActivity(),
             }
             popupAction.dismiss()
         }
-        val navigationBarHeight =
-            if (!ReadBookConfig.hideNavigationBar && navigationBarGravity == Gravity.BOTTOM)
-                binding.navigationBar.height else 0
         popupAction.showAtLocation(
             binding.readView, Gravity.BOTTOM or Gravity.LEFT, x.toInt(),
-            binding.root.height + navigationBarHeight - y.toInt()
+            binding.root.rootView.height - y.toInt()
         )
     }
 
