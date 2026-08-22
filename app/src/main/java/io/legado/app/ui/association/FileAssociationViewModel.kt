@@ -10,6 +10,7 @@ import io.legado.app.constant.AppPattern.bookFileRegex
 import io.legado.app.data.entities.Book
 import io.legado.app.model.localBook.LocalBook
 import io.legado.app.utils.*
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 
 class FileAssociationViewModel(application: Application) : BaseAssociationViewModel(application) {
@@ -63,6 +64,17 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
 
     fun dispatchSharedText(text: String) {
         execute {
+            extractSharedImportUrl(text)?.let { url ->
+                onLineImportLive.postValue(
+                    Uri.Builder()
+                        .scheme("legado")
+                        .authority("import")
+                        .appendPath("auto")
+                        .appendQueryParameter("src", url)
+                        .build()
+                )
+                return@execute
+            }
             val file = File.createTempFile("shared_import_", ".json", context.cacheDir)
             sharedImportFile = file
             file.writeText(text)
@@ -108,4 +120,37 @@ class FileAssociationViewModel(application: Application) : BaseAssociationViewMo
         sharedImportFile?.delete()
         super.onCleared()
     }
+}
+
+private val sharedImportUrlRegex =
+    Regex("""(?<!["'])https?://[^\s"'<>]+""", RegexOption.IGNORE_CASE)
+
+private val sharedImportUrlTrailingPunctuation =
+    setOf(
+        '.', ',', ';', ':', '!', '?',
+        '\u3002', '\uff0c', '\uff1b', '\uff1a', '\uff01', '\uff1f', '\u3001'
+    )
+
+private val sharedImportUrlBrackets =
+    listOf(
+        '(' to ')', '[' to ']', '{' to '}',
+        '\uff08' to '\uff09', '\u3010' to '\u3011', '\u300a' to '\u300b'
+    )
+
+internal fun extractSharedImportUrl(text: String): String? {
+    if (text.isJson()) return null
+    return sharedImportUrlRegex.findAll(text)
+        .map { it.value.trimSharedImportUrlSuffix() }
+        .filter { it.toHttpUrlOrNull() != null }
+        .singleOrNull()
+}
+
+private fun String.trimSharedImportUrlSuffix(): String {
+    var result = trimEnd { it in sharedImportUrlTrailingPunctuation }
+    sharedImportUrlBrackets.forEach { (open, close) ->
+        while (result.endsWith(close) && result.count { it == close } > result.count { it == open }) {
+            result = result.dropLast(1)
+        }
+    }
+    return result
 }

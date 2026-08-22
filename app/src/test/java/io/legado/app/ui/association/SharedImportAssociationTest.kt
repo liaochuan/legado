@@ -1,11 +1,50 @@
 package io.legado.app.ui.association
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 class SharedImportAssociationTest {
+
+    @Test
+    fun `shared text extracts exactly one http url for online import`() {
+        assertEquals(
+            "https://example.com/source.json?group=1",
+            extractSharedImportUrl("书源\nhttps://example.com/source.json?group=1")
+        )
+        assertEquals(
+            "HTTP://example.com/source.json",
+            extractSharedImportUrl("HTTP://example.com/source.json")
+        )
+        assertEquals(
+            "https://例子.测试/source.json",
+            extractSharedImportUrl("https://例子.测试/source.json")
+        )
+        assertEquals(
+            "https://example.com/source.json",
+            extractSharedImportUrl("请导入（https://example.com/source.json）。")
+        )
+        assertEquals(
+            "https://en.wikipedia.org/wiki/Function_(mathematics)",
+            extractSharedImportUrl("https://en.wikipedia.org/wiki/Function_(mathematics)")
+        )
+        assertEquals(
+            "https://example.com/source.json",
+            extractSharedImportUrl("https://example.com/source.json https://")
+        )
+        assertNull(extractSharedImportUrl("ftp://example.com/source.json"))
+        assertNull(extractSharedImportUrl("https://one.example/a https://two.example/b"))
+        assertNull(extractSharedImportUrl("{\"url\":\"https://example.com/source.json\"}"))
+        assertNull(
+            extractSharedImportUrl(
+                """{"bookSourceUrl":"https://source.example","bookSourceComment":"文档 https://docs.example"}"""
+            )
+        )
+        assertNull(extractSharedImportUrl("https://"))
+    }
 
     @Test
     fun `share import accepts only json compatible mime types`() {
@@ -68,6 +107,13 @@ class SharedImportAssociationTest {
         assertTrue(sharedText.contains("context.cacheDir"))
         assertTrue(sharedText.contains("file.writeText(text)"))
         assertTrue(sharedText.contains("importJson(Uri.fromFile(file))"))
+        assertTrue(sharedText.contains("extractSharedImportUrl(text)"))
+        assertTrue(sharedText.contains(".appendPath(\"auto\")"))
+        assertTrue(sharedText.contains(".appendQueryParameter(\"src\", url)"))
+        assertTrue(
+            sharedText.indexOf("extractSharedImportUrl(text)") <
+                    sharedText.indexOf("File.createTempFile(")
+        )
         assertTrue(viewModel.contains("override fun onCleared()"))
         assertTrue(viewModel.contains("sharedImportFile?.delete()"))
     }
