@@ -886,10 +886,12 @@ class TitleFontWeightRenderingTest {
                     val innerStart = original.indexOf("洗脸刷牙")
                     val innerEnd = innerStart + "洗脸刷牙".length
                     assertTrue(start >= 0 && innerStart > start && innerEnd < end)
-                    for (variant in listOf("default", "12dp", "different-fill", "different-padding")) {
+                    for (variant in listOf("default", "12dp", "12dp-no-layout", "different-fill", "different-padding")) {
                         val split = variant.startsWith("different")
+                        val noLayoutPadding = variant == "12dp-no-layout"
                         val style = HighlightStyle(fill = Color.MAGENTA, fillShape = HighlightStyle.FillShape.PILL,
                             pillPaddingScale = 0.5f, horizontalPadding = 12f.takeUnless { variant == "default" },
+                            reserveTextSpace = !noLayoutPadding && variant != "default",
                             textColor = Color.BLACK)
                         fun overlay(text: String, overlayStyle: HighlightStyle): HighlightMatcher.Range {
                             val offset = original.indexOf(text)
@@ -905,11 +907,14 @@ class TitleFontWeightRenderingTest {
                             overlay("九点", HighlightStyle(underline = HighlightStyle.Underline(color = Color.GREEN))))
                         when (variant) {
                             "different-fill" -> ranges += overlay("洗脸刷牙", style.copy(fill = Color.CYAN))
-                            "different-padding" -> ranges += overlay("洗脸刷牙", HighlightStyle(horizontalPadding = 24f))
+                            "different-padding" -> ranges += overlay("洗脸刷牙", HighlightStyle(horizontalPadding = 24f,
+                                reserveTextSpace = true))
                         }
                         val label = "$mode $variant"
                         val spacing = HighlightSpacing.resolve(base, ranges)
-                        if (variant != "default") {
+                        if (variant == "12dp-no-layout") {
+                            assertTrue("Default padding does not add text spans: $label", spacing.columns.isEmpty())
+                        } else if (variant != "default") {
                             val before = spacing.columns.filterValues { it.before > 0f }.keys
                             val after = spacing.columns.filterValues { it.after > 0f }.keys
                             assertEquals("Only real background starts reserve padding: $label",
@@ -1050,7 +1055,8 @@ class TitleFontWeightRenderingTest {
                 val after = "后续段落用于确认其它段落的排版位置保持稳定。".repeat(3)
                 val fixture = BookChapter(bookUrl = book!!.bookUrl, url = "text-paragraph-insets", index = 10010)
                 val style = HighlightStyle(fill = Color.MAGENTA,
-                    fillShape = HighlightStyle.FillShape.PILL, horizontalPadding = 32f)
+                    fillShape = HighlightStyle.FillShape.PILL, horizontalPadding = 32f,
+                    reserveTextSpace = true)
                 for (mode in listOf("static", "zh")) for (justify in listOf(false, true)) {
                     ReadBookConfig.useZhLayout = mode == "zh"
                     context.putPrefBoolean(PreferKey.textFullJustify, justify)
@@ -1327,6 +1333,7 @@ class TitleFontWeightRenderingTest {
                         val measuredCurves = mutableListOf<Int>()
                         for (gap in listOf(0f, 4f, 24f)) {
                             val style = originalStyle.copy(horizontalPadding = gap,
+                                reserveTextSpace = true,
                                 fontSize = 30f.takeUnless { styleIndex == 0 },
                                 letterSpacing = (-0.1f).takeIf { styleIndex == 3 }, textColor = 1)
                             val ranges = listOf(short, long).map { text ->
