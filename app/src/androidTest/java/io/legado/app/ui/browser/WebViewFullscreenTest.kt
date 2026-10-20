@@ -2,6 +2,8 @@ package io.legado.app.ui.browser
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.View
 import android.webkit.WebChromeClient
@@ -22,6 +24,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -89,16 +92,27 @@ class WebViewFullscreenTest {
         var fullscreen = false
         while (!fullscreen && SystemClock.uptimeMillis() < deadline) {
             scenario.onActivity {
-                fullscreen = it.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                fullscreen = it.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE &&
+                    it.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
             }
             if (!fullscreen) SystemClock.sleep(50)
         }
         assertTrue("The canvas player's real fullscreen request must select landscape", fullscreen)
+        screenshot("webview-fullscreen-landscape")
         scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        instrumentation.waitForIdleSync()
+        val restoreDeadline = SystemClock.uptimeMillis() + 5_000
+        var restored = false
+        while (!restored && SystemClock.uptimeMillis() < restoreDeadline) {
+            scenario.onActivity {
+                restored = it.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+            }
+            if (!restored) SystemClock.sleep(50)
+        }
+        assertTrue("Exiting fullscreen must restore the portrait layout", restored)
         scenario.onActivity {
             assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, it.requestedOrientation)
         }
+        screenshot("webview-fullscreen-restored")
     }
 
     @Test
@@ -184,6 +198,19 @@ class WebViewFullscreenTest {
     private fun callback(hidden: AtomicInteger) = object : WebChromeClient.CustomViewCallback {
         override fun onCustomViewHidden() {
             hidden.incrementAndGet()
+        }
+    }
+
+    private fun screenshot(name: String) {
+        instrumentation.waitForIdleSync()
+        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            val directory = instrumentation.targetContext.getExternalFilesDir("ui-regression")
+            File(directory, "$name.png").outputStream().use {
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+            }
+        } finally {
+            bitmap.recycle()
         }
     }
 
