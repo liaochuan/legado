@@ -18,3 +18,8 @@ package-lock.json
 .kotlin/
 .cxx
 .vscode
+.openidea/
+.superpowers/
+packaging/*.json
+!packaging/liaocl-build.example.json
+packaging/*.log

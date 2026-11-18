@@ -1,0 +1,10 @@
+{
+  "androidHome": "C:\\path\\to\\Android\\Sdk",
+  "javaHome": "C:\\path\\to\\jdk-21",
+  "storeFile": "C:\\path\\to\\your.keystore",
+  "keyAlias": "key0",
+  "storePassword": "change-me",
+  "keyPassword": "change-me",
+  "appId": "top.liaocl.legado",
+  "abi": "arm64-v8a"
+}

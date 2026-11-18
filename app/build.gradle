@@ -11,7 +11,6 @@ plugins {
     alias libs.plugins.kotlin.parcelize
     alias libs.plugins.room
     alias libs.plugins.ksp
-    alias libs.plugins.google.services
 }
 apply from: 'download.gradle'
 apply from: 'cronet-loader.gradle'
@@ -38,6 +37,10 @@ try {
     // Keep source archives buildable when Git is unavailable.
 }
 def armOnly = project.findProperty("armOnly")?.toBoolean() ?: false
+// Local packaging overrides (see packaging/build-liaocl.ps1); defaults keep upstream behavior.
+def customApplicationId = project.findProperty("customApplicationId")?.toString()?.trim()
+def customAbiFilters = project.findProperty("customAbiFilters")?.toString()
+        ?.split(',')?.collect { it.trim() }?.findAll { it }
 
 android {
     compileSdk = compile_sdk_version
@@ -63,7 +66,11 @@ android {
         }
     }
     defaultConfig {
-        applicationId "com.legado.app"
+        if (customApplicationId) {
+            applicationId customApplicationId
+        } else {
+            applicationId "com.legado.app"
+        }
         minSdk 23
         targetSdk 36
         versionCode = versionCodeValue
@@ -84,7 +91,11 @@ android {
         ]
         project.ext.set("archivesBaseName", name + "_" + version)
 
-        if (armOnly) {
+        if (customAbiFilters) {
+            ndk {
+                abiFilters(*customAbiFilters)
+            }
+        } else if (armOnly) {
             ndk {
                 abiFilters 'arm64-v8a', 'armeabi-v7a'
             }
@@ -112,7 +123,9 @@ android {
             if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfig = signingConfigs.myConfig
             }
-            applicationIdSuffix '.release'
+            if (!customApplicationId) {
+                applicationIdSuffix '.release'
+            }
             if (getApplicationIdSuffix() == '.releaseA') {
                 manifestPlaceholders.put("app_name", "@string/app_name_a")
             } else {
@@ -392,4 +405,9 @@ dependencies {
     implementation(platform(libs.soraEditor.bom))
     implementation(libs.soraEditor.core)
     implementation(libs.soraEditor.language.textmate)
+}
+
+// 本地打包传入 skipGoogleServices=true，避免自定义 applicationId 与 google-services.json 包名不匹配
+if (project.findProperty("skipGoogleServices")?.toBoolean() != true) {
+    apply plugin: 'com.google.gms.google-services'
 }

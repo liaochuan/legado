@@ -1,0 +1,35 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+// 仅供 packaging/build-liaocl.ps1 通过 -I 传入。
+// 有些机器在 ~/.gradle/init.d 中用 allprojects { repositories { ... } } 注入镜像仓库，
+// 这会与本仓库 settings.gradle 的 FAIL_ON_PROJECT_REPOS 冲突。
+// 这里改为允许 project 级仓库，并把 settings.gradle 中声明的仓库补齐到 project 层。
+// 注意：仓库列表需与 settings.gradle 保持同步。
+settingsEvaluated { settings ->
+    settings.dependencyResolutionManagement.repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
+}
+
+allprojects { project ->
+    project.repositories {
+        google {
+            content {
+                includeGroupByRegex('com\\.android.*')
+                includeGroupByRegex('com\\.google.*')
+                includeGroupByRegex('androidx.*')
+            }
+        }
+        maven {
+            url = 'https://jitpack.io'
+            content {
+                includeGroupByRegex('com\\.github.*')
+            }
+        }
+        mavenCentral()
+        maven {
+            url = new File(project.rootDir, 'third_party/maven').toURI()
+            content {
+                includeModule('org.htmlunit', 'htmlunit-core-js')
+            }
+        }
+    }
+}
