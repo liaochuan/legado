@@ -120,7 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\build-liaocl.ps1 `
   -SkipVerify
 ```
 
-`-SkipVerify` 会跳过包名 / ABI / 签名校验，仅在环境缺少 `aapt2` / `apksigner` 时使用；默认缺少校验工具会直接失败。
+`-SkipVerify` 会跳过包名 / ABI / 签名校验，仅在环境缺少 `aapt2` / `apksigner` 时使用；默认缺少校验工具会直接失败。`-OutputDir` 用于指定输出目录，默认 `dist/`。
 
 ### 构建过程
 
@@ -129,12 +129,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\build-liaocl.ps1 `
 1. 读取配置，校验 SDK / JDK / keystore 路径与 Java 主版本；
 2. 设置 `JAVA_HOME`、`ANDROID_HOME`、`ANDROID_SDK_ROOT`、`GRADLE_USER_HOME`；
 3. 通过 `ORG_GRADLE_PROJECT_RELEASE_*` 注入签名信息（不写入 `gradle.properties`，不出现在命令行）；
-4. 执行 `:app:assembleAppRelease`，并传入 `-PcustomApplicationId=...`、`-PcustomAbiFilters=...`、`-PskipGoogleServices=true`；
+4. 执行 `:app:assembleAppRelease`，并传入 `-PcustomApplicationId=...`、`-PcustomAbiFilters=...`；
 5. 用 `aapt2 dump badging` 校验 `applicationId` 与 `native-code`；
 6. 用 `apksigner verify` 校验签名；
 7. 复制到输出目录，打印文件大小与 SHA-256。
 
-产物：`release/liaocl-legado-<versionName>-<abi>.apk`（`release/` 已被 `.gitignore` 忽略）。
+产物：`dist/liaocl-legado-<versionName>-<abi>.apk`（`dist/` 已被 `.gitignore` 忽略）。
 
 ### Gradle 覆盖属性
 
@@ -142,7 +142,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\build-liaocl.ps1 `
 | --- | --- |
 | `customApplicationId` | 覆盖 `defaultConfig.applicationId`；设置后 release 不再追加 `.release`，debug 仍保留 `.debug` |
 | `customAbiFilters` | 覆盖 ABI 过滤，逗号分隔，例如 `arm64-v8a` |
-| `skipGoogleServices` | 值为 `true` 时不应用 Google Services 插件 |
 
 不传这些属性时，构建行为与上游一致。需要改打包参数时优先使用属性，不要直接改 `defaultConfig` 的默认值，以减少与上游同步的冲突。
 
@@ -156,7 +155,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging\build-liaocl.ps1 `
 
 ### 已知限制
 
-- 打包时跳过 Google Services 插件（`app/google-services.json` 只有官方包名）；需要 Firebase 时自行补充匹配 `top.liaocl.legado` 的配置。
 - 自定义包名不在应用的更新变体映射中，“检查更新”会返回官方 APK，因包名 / 签名不同无法覆盖安装；需要时关闭更新检查或修改更新源。
 - 自定义签名与官方签名不同，不能覆盖安装官方版本，两者可以共存。
 

@@ -101,7 +101,7 @@ if ($javaMajor -lt 21) {
 }
 
 if (-not $OutputDir) {
-    $OutputDir = Join-Path $repoRoot 'release'
+    $OutputDir = Join-Path $repoRoot 'dist'
 }
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -132,7 +132,6 @@ try {
     & $gradlew ':app:assembleAppRelease' `
         "-PcustomApplicationId=$appId" `
         "-PcustomAbiFilters=$abi" `
-        '-PskipGoogleServices=true' `
         '-Dorg.gradle.internal.http.connectionTimeout=120000' `
         '-Dorg.gradle.internal.http.socketTimeout=120000' `
         '-I' $reposInit `
