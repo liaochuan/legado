@@ -17,6 +17,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.glide.ImageLoader
+import io.legado.app.help.sync.AppProgressSync
 import io.legado.app.model.BookCover
 import io.legado.app.model.ImageProvider
 import io.legado.app.model.ReadBook
@@ -251,7 +252,11 @@ object BookController {
     suspend fun saveBook(postData: String?): ReturnData {
         val returnData = ReturnData()
         GSON.fromJsonObject<Book>(postData).getOrNull()?.let { book ->
-            AppWebDav.uploadBookProgress(book)
+            if (AppProgressSync.isKosyncEligible(book)) {
+                AppProgressSync.push(book)
+            } else if (AppConfig.progressSyncWebDav) {
+                AppWebDav.uploadBookProgress(book)
+            }
             book.save()
             return returnData.setData("")
         }
@@ -283,8 +288,12 @@ object BookController {
                     book.durChapterPos = bookProgress.durChapterPos
                     book.durChapterTitle = bookProgress.durChapterTitle
                     book.durChapterTime = bookProgress.durChapterTime
-                    AppWebDav.uploadBookProgress(bookProgress) {
-                        book.syncTime = System.currentTimeMillis()
+                    if (AppProgressSync.isKosyncEligible(book)) {
+                        AppProgressSync.push(book)
+                    } else if (AppConfig.progressSyncWebDav) {
+                        AppWebDav.uploadBookProgress(bookProgress) {
+                            book.syncTime = System.currentTimeMillis()
+                        }
                     }
                     book.update()
                     ReadBook.book?.let {

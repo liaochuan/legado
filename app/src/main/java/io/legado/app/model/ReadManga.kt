@@ -513,6 +513,7 @@ object ReadManga : CoroutineScope by MainScope() {
     }
 
     fun uploadProgress(successAction: (() -> Unit)? = null) {
+        if (!AppConfig.progressSyncWebDav) return
         book?.let {
             launch(IO) {
                 AppWebDav.uploadBookProgress(it) {
@@ -534,6 +535,7 @@ object ReadManga : CoroutineScope by MainScope() {
         syncSuccessAction: (() -> Unit)? = null,
     ) {
         if (!AppConfig.syncBookProgress) return
+        if (!AppConfig.progressSyncWebDav) return
         val book = book ?: return
         Coroutine.async {
             AppWebDav.getBookProgress(book)

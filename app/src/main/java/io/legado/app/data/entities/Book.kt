@@ -125,6 +125,9 @@ data class Book(
     //同步时间
     @ColumnInfo(defaultValue = "0")
     var syncTime: Long = 0L,
+    //KOReader 同步时间（服务器 Unix 秒）
+    @ColumnInfo(defaultValue = "0")
+    var kosyncTime: Long = 0L,
     // 保存到本地的网络封面
     var persistedCoverUrl: String? = null
 ) : Parcelable, BaseBook {

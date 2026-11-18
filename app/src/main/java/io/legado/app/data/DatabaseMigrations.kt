@@ -25,7 +25,14 @@ object DatabaseMigrations {
             migration_39_40, migration_40_41, migration_41_42, migration_42_43,
             migration_100_101, migration_104_105, migration_105_106, migration_106_107,
             migration_107_108, migration_108_109, migration_109_110, migration_112_113,
+            migration_113_114,
         )
+    }
+
+    private val migration_113_114 = object : Migration(113, 114) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE books ADD COLUMN kosyncTime INTEGER NOT NULL DEFAULT 0")
+        }
     }
 
     private val migration_112_113 = object : Migration(112, 113) {

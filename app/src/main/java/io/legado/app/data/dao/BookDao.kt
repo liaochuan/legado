@@ -405,6 +405,9 @@ interface BookDao {
     @Query("update books set durChapterPos = :pos where bookUrl = :bookUrl")
     fun upProgress(bookUrl: String, pos: Int)
 
+    @Query("update books set kosyncTime = 0")
+    fun resetKosyncTime()
+
     @Query("update books set type = :type, `order` = :order where bookUrl = :bookUrl")
     fun updateShelfState(bookUrl: String, type: Int, order: Int)
 

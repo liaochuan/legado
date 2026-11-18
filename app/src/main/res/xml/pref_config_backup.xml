@@ -90,6 +90,66 @@
     </io.legado.app.lib.prefs.PreferenceCategory>
 
     <io.legado.app.lib.prefs.PreferenceCategory
+        android:title="@string/kosync_set"
+        app:allowDividerBelow="false"
+        app:iconSpaceReserved="false"
+        app:layout="@layout/view_preference_category">
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="false"
+            android:key="progressSyncKosync"
+            android:summary="@string/kosync_enabled_s"
+            android:title="@string/kosync_enabled"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:dependency="syncBookProgress"
+            android:key="progressSyncWebDav"
+            android:summary="@string/webdav_progress_sync_s"
+            android:title="@string/webdav_progress_sync"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.EditTextPreference
+            android:key="kosyncServerUrl"
+            android:summary="@string/kosync_server_url_s"
+            android:title="@string/kosync_server_url"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.EditTextPreference
+            android:key="kosyncUsername"
+            android:summary="@string/kosync_username_s"
+            android:title="@string/kosync_username"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.EditTextPreference
+            android:key="kosyncAuthKey"
+            android:summary="@string/kosync_password_s"
+            android:title="@string/kosync_password"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.EditTextPreference
+            android:key="kosyncDeviceName"
+            android:title="@string/kosync_device_name"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.SwitchPreference
+            android:defaultValue="true"
+            android:dependency="progressSyncKosync"
+            android:key="kosyncBatchOnStartup"
+            android:summary="@string/kosync_batch_s"
+            android:title="@string/kosync_batch"
+            app:iconSpaceReserved="false" />
+
+        <io.legado.app.lib.prefs.Preference
+            android:key="kosync_test"
+            android:summary="@string/kosync_test_s"
+            android:title="@string/kosync_test"
+            app:iconSpaceReserved="false" />
+
+    </io.legado.app.lib.prefs.PreferenceCategory>
+
+    <io.legado.app.lib.prefs.PreferenceCategory
         android:title="@string/backup_restore"
         app:allowDividerBelow="false"
         app:iconSpaceReserved="false"

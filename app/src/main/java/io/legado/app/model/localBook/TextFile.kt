@@ -27,7 +27,7 @@ class TextFile(private var book: Book) {
 
     @Suppress("ConstPropertyName")
     companion object {
-        private val padRegex = "^[\\n\\s]+".toRegex()
+        internal val padRegex = "^[\\n\\s]+".toRegex()
         const val spaceChars = "🫅🈳🏻"
         private const val txtBufferSize = 8 * 1024 * 1024
         private var textFile: TextFile? = null

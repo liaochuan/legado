@@ -1868,4 +1868,22 @@
     <string name="content_search_scope_up">From here up</string>
     <string name="content_search_anchor_unavailable">The reading position could not be located after text processing. Return to the reader and try again, or choose Whole book.</string>
     <string name="content_search_result_unavailable">This result could not be located reliably in the displayed text. Check text replacement and title settings, then search again.</string>
+    <string name="kosync_set">KOReader sync</string>
+    <string name="kosync_enabled">Enable KOReader sync</string>
+    <string name="kosync_enabled_s">Sync local TXT/EPUB progress with a KOSync-compatible server</string>
+    <string name="webdav_progress_sync">WebDAV progress sync</string>
+    <string name="webdav_progress_sync_s">When KOReader sync is enabled, WebDAV only uploads progress</string>
+    <string name="kosync_server_url">Server URL</string>
+    <string name="kosync_server_url_s">For example https://sync.example.com</string>
+    <string name="kosync_username">Username</string>
+    <string name="kosync_username_s">KOSync account username</string>
+    <string name="kosync_password">Password</string>
+    <string name="kosync_password_s">Plain password or 32-character MD5 key</string>
+    <string name="kosync_device_name">Device name</string>
+    <string name="kosync_batch">Sync all on startup</string>
+    <string name="kosync_batch_s">Use the crosspoint-sync document list when available</string>
+    <string name="kosync_test">Test connection</string>
+    <string name="kosync_test_s">Check login and extended API support</string>
+    <string name="kosync_test_ok">KOSync connection OK</string>
+    <string name="kosync_test_fail">KOSync connection failed</string>
 </resources>

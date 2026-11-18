@@ -46,6 +46,7 @@ import io.legado.app.data.entities.Bookmark
 import io.legado.app.data.entities.rule.ReviewRule
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
+import io.legado.app.help.sync.AppProgressSync
 import io.legado.app.help.HighlightColors
 import io.legado.app.help.HighlightStyle
 import io.legado.app.help.HighlightStyles
@@ -3196,7 +3197,7 @@ class ReadBookActivity : BaseReadBookActivity(),
         backupJob = lifecycleScope.launch(IO) {
             delay(300000)
             ReadBook.book?.let {
-                AppWebDav.uploadBookProgress(it)
+                AppProgressSync.push(it, anchorText = ReadBook.currentPageAnchorText())
                 ensureActive()
                 it.update()
                 Backup.autoBack(this@ReadBookActivity)

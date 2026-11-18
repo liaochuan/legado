@@ -8,6 +8,7 @@ import io.legado.app.constant.AppConst
 import io.legado.app.constant.PreferKey
 import io.legado.app.data.appDb
 import io.legado.app.help.book.ResourceThemeGeneration
+import io.legado.app.help.sync.KosyncConfig
 import io.legado.app.utils.GSON
 import io.legado.app.utils.canvasrecorder.CanvasRecorderFactory
 import io.legado.app.utils.defaultSharedPreferences
@@ -762,6 +763,34 @@ object AppConfig : SharedPreferences.OnSharedPreferenceChangeListener {
     val syncBookProgress get() = appCtx.getPrefBoolean(PreferKey.syncBookProgress, true)
 
     val syncBookProgressPlus get() = appCtx.getPrefBoolean(PreferKey.syncBookProgressPlus, false)
+
+    val progressSyncKosync get() = appCtx.getPrefBoolean(PreferKey.progressSyncKosync, false)
+
+    val progressSyncWebDav get() = appCtx.getPrefBoolean(PreferKey.progressSyncWebDav, true)
+
+    val kosyncServerUrl: String
+        get() = appCtx.getPrefString(PreferKey.kosyncServerUrl).orEmpty()
+
+    val kosyncUsername: String
+        get() = appCtx.getPrefString(PreferKey.kosyncUsername).orEmpty()
+
+    val kosyncAuthKey: String
+        get() = appCtx.getPrefString(PreferKey.kosyncAuthKey).orEmpty()
+
+    val kosyncDeviceName: String
+        get() = appCtx.getPrefString(PreferKey.kosyncDeviceName)?.takeIf { it.isNotBlank() }
+            ?: Build.MODEL.orEmpty()
+
+    val kosyncBatchOnStartup get() = appCtx.getPrefBoolean(PreferKey.kosyncBatchOnStartup, true)
+
+    val kosyncConfig: KosyncConfig
+        get() = KosyncConfig(
+            serverUrl = kosyncServerUrl,
+            username = kosyncUsername,
+            authKey = kosyncAuthKey,
+            deviceName = kosyncDeviceName,
+            batchOnStartup = kosyncBatchOnStartup,
+        )
 
     val mediaButtonOnExit get() = appCtx.getPrefBoolean("mediaButtonOnExit", true)
 

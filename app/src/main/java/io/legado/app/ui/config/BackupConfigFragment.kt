@@ -25,17 +25,22 @@ import io.legado.app.constant.PreferKey
 import io.legado.app.databinding.DialogAutoBackupBinding
 import io.legado.app.databinding.DialogEditTextBinding
 import io.legado.app.databinding.DialogLanBackupSendBinding
+import io.legado.app.data.appDb
 import io.legado.app.exception.NoStackTraceException
 import io.legado.app.help.AppWebDav
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.coroutine.Coroutine
+import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.storage.Backup
 import io.legado.app.help.storage.BackupConfig
 import io.legado.app.help.storage.ImportOldData
 import io.legado.app.help.storage.LanBackupSession
 import io.legado.app.help.storage.LanBackupTransfer
 import io.legado.app.help.storage.Restore
+import io.legado.app.help.sync.KosyncCapabilities
+import io.legado.app.help.sync.KosyncClient
+import io.legado.app.help.sync.KosyncDocumentId
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.lib.dialogs.selector
 import io.legado.app.lib.permission.Permissions
@@ -47,6 +52,7 @@ import io.legado.app.ui.file.HandleFileContract
 import io.legado.app.ui.qrcode.QrCodeResult
 import io.legado.app.ui.widget.dialog.WaitDialog
 import io.legado.app.utils.FileDoc
+import io.legado.app.utils.MD5Utils
 import io.legado.app.utils.QRCodeUtils
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.checkWrite
@@ -55,6 +61,7 @@ import io.legado.app.utils.externalFiles
 import io.legado.app.utils.getPrefString
 import io.legado.app.utils.isContentScheme
 import io.legado.app.utils.launch
+import io.legado.app.utils.putPrefString
 import io.legado.app.utils.setEdgeEffectColor
 import io.legado.app.utils.showDialogFragment
 import io.legado.app.utils.showHelp
@@ -137,6 +144,27 @@ class BackupConfigFragment : PreferenceFragment(),
                 editText.setSelection(editText.text.length)
             }
         }
+        findPreference<EditTextPreference>(PreferKey.kosyncAuthKey)?.let { preference ->
+            preference.setOnBindEditTextListener { editText ->
+                editText.inputType =
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD or InputType.TYPE_CLASS_TEXT
+                editText.setSelection(editText.text.length)
+            }
+            preference.setOnPreferenceChangeListener { pref, newValue ->
+                val value = newValue?.toString()?.trim().orEmpty()
+                if (value.isNotEmpty()) {
+                    val key = if (value.matches(Regex("[0-9a-fA-F]{32}"))) {
+                        value.lowercase()
+                    } else {
+                        MD5Utils.md5Encode(value)
+                    }
+                    appCtx.putPrefString(PreferKey.kosyncAuthKey, key)
+                    pref.summary = "*".repeat(key.length)
+                    updateKosyncConfigFingerprint()
+                }
+                false
+            }
+        }
         findPreference<EditTextPreference>(PreferKey.webDavDir)?.let {
             it.setOnBindEditTextListener { editText ->
                 editText.text = AppConfig.webDavDir?.toEditable()
@@ -152,6 +180,10 @@ class BackupConfigFragment : PreferenceFragment(),
         upPreferenceSummary(PreferKey.webDavUrl, getPrefString(PreferKey.webDavUrl))
         upPreferenceSummary(PreferKey.webDavAccount, getPrefString(PreferKey.webDavAccount))
         upPreferenceSummary(PreferKey.webDavPassword, getPrefString(PreferKey.webDavPassword))
+        upPreferenceSummary(PreferKey.kosyncServerUrl, AppConfig.kosyncServerUrl)
+        upPreferenceSummary(PreferKey.kosyncUsername, AppConfig.kosyncUsername)
+        upPreferenceSummary(PreferKey.kosyncAuthKey, AppConfig.kosyncAuthKey)
+        upPreferenceSummary(PreferKey.kosyncDeviceName, AppConfig.kosyncDeviceName)
         upPreferenceSummary(PreferKey.webDavDir, AppConfig.webDavDir)
         upPreferenceSummary(PreferKey.webDavDeviceName, AppConfig.webDavDeviceName)
         upPreferenceSummary(PreferKey.backupPath, getPrefString(PreferKey.backupPath))
@@ -218,6 +250,14 @@ class BackupConfigFragment : PreferenceFragment(),
                 viewModel.upWebDavConfig()
             }
 
+            PreferKey.kosyncServerUrl,
+            PreferKey.kosyncUsername,
+            PreferKey.kosyncAuthKey,
+            PreferKey.kosyncDeviceName -> {
+                upPreferenceSummary(key, appCtx.getPrefString(key))
+                updateKosyncConfigFingerprint()
+            }
+
             PreferKey.webDavDeviceName -> upPreferenceSummary(key, getPrefString(key))
         }
     }
@@ -254,6 +294,25 @@ class BackupConfigFragment : PreferenceFragment(),
                 else -> value
             }
 
+            PreferKey.kosyncServerUrl ->
+                preference.summary = value?.takeIf { it.isNotBlank() }
+                    ?: getString(R.string.kosync_server_url_s)
+
+            PreferKey.kosyncUsername ->
+                preference.summary = value?.takeIf { it.isNotBlank() }
+                    ?: getString(R.string.kosync_username_s)
+
+            PreferKey.kosyncAuthKey ->
+                preference.summary = if (value.isNullOrEmpty()) {
+                    getString(R.string.kosync_password_s)
+                } else {
+                    "*".repeat(value.length)
+                }
+
+            PreferKey.kosyncDeviceName ->
+                preference.summary = value?.takeIf { it.isNotBlank() }
+                    ?: Build.MODEL
+
             else -> {
                 if (preference is ListPreference) {
                     val index = preference.findIndexOfValue(value)
@@ -276,6 +335,7 @@ class BackupConfigFragment : PreferenceFragment(),
             PreferKey.autoBackup -> configureAutoBackup()
             "web_dav_restore" -> restore()
             "lan_backup_transfer" -> lanBackupTransfer()
+            "kosync_test" -> testKosyncConnection()
         }
         return super.onPreferenceTreeClick(preference)
     }
@@ -289,6 +349,48 @@ class BackupConfigFragment : PreferenceFragment(),
                 getString(if (AppConfig.autoBackupWebDav) R.string.backup_local_webdav else R.string.backup_local_only),
                 AppConfig.autoBackupIntervalDays)
         } else getString(R.string.auto_backup_disabled)
+    }
+
+    private fun testKosyncConnection() {
+        val config = AppConfig.kosyncConfig
+        if (!config.isConfigured()) {
+            appCtx.toastOnUi(getString(R.string.kosync_test_fail))
+            return
+        }
+        lifecycleScope.launch {
+            val result = withContext(IO) {
+                runCatching {
+                    val client = KosyncClient(
+                        baseUrl = config.serverUrl,
+                        username = config.username,
+                        authKey = config.authKey,
+                        client = okHttpClient,
+                    )
+                    if (!client.auth()) return@runCatching false
+                    val supported = client.supportsExtendedApi()
+                    KosyncCapabilities.setSupported(client.capabilityKey(), supported)
+                    true
+                }.getOrDefault(false)
+            }
+            appCtx.toastOnUi(
+                getString(if (result) R.string.kosync_test_ok else R.string.kosync_test_fail)
+            )
+        }
+    }
+
+    private fun updateKosyncConfigFingerprint() {
+        val config = AppConfig.kosyncConfig
+        val fingerprint = config.fingerprint()
+        val old = appCtx.getPrefString(PreferKey.kosyncConfigFingerprint)
+        if (old == fingerprint) return
+        appCtx.putPrefString(PreferKey.kosyncConfigFingerprint, fingerprint)
+        KosyncCapabilities.clear()
+        KosyncDocumentId.clearCache()
+        if (old != null) {
+            lifecycleScope.launch(IO) {
+                appDb.bookDao.resetKosyncTime()
+            }
+        }
     }
 
     private fun configureAutoBackup() {

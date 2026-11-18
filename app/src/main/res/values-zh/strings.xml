@@ -1755,4 +1755,22 @@
     <string name="content_search_scope_up">向上</string>
     <string name="content_search_anchor_unavailable">正文处理后无法可靠定位当前阅读位置。请返回阅读页重试，或切换为全局搜索。</string>
     <string name="content_search_result_unavailable">无法在阅读正文中可靠定位此结果。请检查替换净化和标题设置后重新搜索。</string>
+    <string name="kosync_set">KOReader 同步</string>
+    <string name="kosync_enabled">启用 KOReader 同步</string>
+    <string name="kosync_enabled_s">把本地 TXT/EPUB 阅读进度同步到 KOSync 兼容服务器</string>
+    <string name="webdav_progress_sync">WebDAV 进度同步</string>
+    <string name="webdav_progress_sync_s">KOReader 同步开启时，WebDAV 只上传进度</string>
+    <string name="kosync_server_url">服务器地址</string>
+    <string name="kosync_server_url_s">例如 https://sync.example.com</string>
+    <string name="kosync_username">用户名</string>
+    <string name="kosync_username_s">KOSync 账号用户名</string>
+    <string name="kosync_password">密码</string>
+    <string name="kosync_password_s">明文密码或 32 位 MD5 key</string>
+    <string name="kosync_device_name">设备名称</string>
+    <string name="kosync_batch">启动时批量同步</string>
+    <string name="kosync_batch_s">检测到 crosspoint-sync 时使用文档列表</string>
+    <string name="kosync_test">测试连接</string>
+    <string name="kosync_test_s">检查登录和扩展接口</string>
+    <string name="kosync_test_ok">KOSync 连接成功</string>
+    <string name="kosync_test_fail">KOSync 连接失败</string>
 </resources>

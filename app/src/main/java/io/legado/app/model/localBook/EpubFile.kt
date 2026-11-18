@@ -160,8 +160,21 @@ class EpubFile(var book: Book) : AutoCloseable {
         return getContent(chapter) ?: content
     }
 
-    private fun getContent(chapter: BookChapter, legacyBoundary: Boolean = false): String? {
-        /*获取当前章节文本*/
+    fun getSpineHrefs(): List<String> {
+        return epubBook?.spine?.spineReferences?.mapNotNull { it.resource?.href } ?: emptyList()
+    }
+
+    fun getSpineIndex(href: String): Int = getSpineHrefs().indexOf(href)
+
+    fun getSpineBody(href: String): Element? {
+        val resource = epubBookContents?.firstOrNull { it.href == href } ?: return null
+        return Jsoup.parse(String(resource.data, mCharset)).body()
+    }
+
+    fun getChapterSpineHref(chapter: BookChapter): String? =
+        chapter.url.substringBeforeLast('#')
+
+    private fun getContent(chapter: BookChapter, legacyBoundary: Boolean = false): String? {        /*获取当前章节文本*/
         val contents = epubBookContents ?: return null
         val boundary = if (legacyBoundary) chapter else readingBoundary(chapter)
         val nextChapterFirstResourceHref = boundary.getVariable("nextUrl").substringBeforeLast("#")

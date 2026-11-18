@@ -18,8 +18,8 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.updateSnapshot
 import io.legado.app.data.entities.saveWithCover
-import io.legado.app.help.AppWebDav
 import io.legado.app.help.HighlightAnchor
+import io.legado.app.help.sync.AppProgressSync
 import io.legado.app.help.HighlightMatcher
 import io.legado.app.help.HighlightRuleMatcher
 import io.legado.app.help.HighlightStyle
@@ -818,13 +818,25 @@ object ReadBook : CoroutineScope by MainScope() {
     fun uploadProgress(toast: Boolean = false, successAction: (() -> Unit)? = null) {
         book?.let {
             launch(IO) {
-                AppWebDav.uploadBookProgress(it, toast) {
-                    successAction?.invoke()
-                }
+                AppProgressSync.push(
+                    it,
+                    { message -> upMsg(message) },
+                    successAction,
+                    currentPageAnchorText(),
+                )
                 ensureActive()
                 it.update()
             }
         }
+    }
+
+    fun currentPageAnchorText(): String? {
+        val chapter = curTextChapter ?: return null
+        val page = chapter.getPageByReadPos(durChapterPos) ?: return null
+        return page.lines.firstOrNull { it.text.isNotBlank() && !it.isImage }
+            ?.text
+            ?.trim()
+            ?.take(40)
     }
 
     /**
@@ -839,27 +851,17 @@ object ReadBook : CoroutineScope by MainScope() {
         if (!AppConfig.syncBookProgress) return
         val book = book ?: return
         Coroutine.async {
-            AppWebDav.getBookProgress(book)
+            AppProgressSync.syncOnOpen(
+                book = book,
+                plus = AppConfig.syncBookProgressPlus,
+                onApplyRemote = newProgressAction,
+                onPromptRemote = newProgressAction,
+                onMessage = { upMsg(it) },
+                anchorText = currentPageAnchorText(),
+                onUploaded = uploadSuccessAction,
+            )
         }.onError {
-            AppLog.put("拉取阅读进度失败", it)
-        }.onSuccess { progress ->
-            if (progress == null || progress.durChapterIndex < book.durChapterIndex ||
-                (progress.durChapterIndex == book.durChapterIndex
-                        && progress.durChapterPos < book.durChapterPos)
-            ) {
-                // 服务器没有进度或者进度比服务器快，上传现有进度
-                Coroutine.async {
-                    AppWebDav.uploadBookProgress(BookProgress(book), uploadSuccessAction)
-                    book.update()
-                }
-            } else if (progress.durChapterIndex > book.durChapterIndex ||
-                progress.durChapterPos > book.durChapterPos
-            ) {
-                // 进度比服务器慢，执行传入动作
-                newProgressAction?.invoke(progress)
-            } else {
-                syncSuccessAction?.invoke()
-            }
+            AppLog.put("同步阅读进度失败", it)
         }
     }
 

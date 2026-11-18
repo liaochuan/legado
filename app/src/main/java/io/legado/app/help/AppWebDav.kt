@@ -320,6 +320,23 @@ object AppWebDav {
         }
     }
 
+    /**
+     * 上传进度并在失败时抛出异常，供同步协调器判断 WebDAV 是否真正成功。
+     */
+    suspend fun uploadBookProgressOrThrow(bookProgress: BookProgress) {
+        val authorization = authorization
+            ?: throw NoStackTraceException("webDav未配置或授权失败")
+        if (!AppConfig.syncBookProgress) {
+            throw NoStackTraceException("进度同步未开启")
+        }
+        if (!NetworkUtils.isAvailable()) {
+            throw NoStackTraceException("网络未连接")
+        }
+        val json = GSON.toJson(bookProgress)
+        val url = getProgressUrl(bookProgress.name, bookProgress.author)
+        WebDav(url, authorization).upload(json.toByteArray(), "application/json")
+    }
+
     private fun getProgressUrl(name: String, author: String): String {
         return bookProgressUrl + getProgressFileName(name, author)
     }
@@ -348,7 +365,7 @@ object AppWebDav {
         return null
     }
 
-    suspend fun downloadAllBookProgress() {
+    suspend fun downloadAllBookProgress(shouldSync: (Book) -> Boolean = { true }) {
         val authorization = authorization ?: return
         if (!NetworkUtils.isAvailable()) return
         val bookProgressFiles = WebDav(bookProgressUrl, authorization).listFiles()
@@ -357,6 +374,7 @@ object AppWebDav {
             map[it.displayName] = it
         }
         appDb.bookDao.all.forEach { book ->
+            if (!shouldSync(book)) return@forEach
             val progressFileName = getProgressFileName(book.name, book.author)
             val webDavFile = map[progressFileName] ?: return@forEach
             if (webDavFile.lastModify <= book.syncTime) {

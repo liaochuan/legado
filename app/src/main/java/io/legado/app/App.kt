@@ -51,6 +51,7 @@ import io.legado.app.help.http.okHttpClient
 import io.legado.app.help.rhino.NativeBaseSource
 import io.legado.app.help.source.SourceHelp
 import io.legado.app.help.storage.Backup
+import io.legado.app.help.sync.AppProgressSync
 import io.legado.app.lib.theme.WallpaperTheme
 import io.legado.app.model.BookCover
 import io.legado.app.model.AutoTask
@@ -136,7 +137,14 @@ class App : Application() {
             AutoTaskScheduler.refresh(this@App)
             //同步阅读记录
             if (AppConfig.syncBookProgress) {
-                AppWebDav.downloadAllBookProgress()
+                if (AppConfig.progressSyncKosync) {
+                    AppProgressSync.syncAllOnStartup(appDb.bookDao.all)
+                }
+                if (AppConfig.progressSyncWebDav) {
+                    AppWebDav.downloadAllBookProgress { book ->
+                        !AppConfig.progressSyncKosync || !AppProgressSync.isKosyncEligible(book)
+                    }
+                }
             }
         }
     }

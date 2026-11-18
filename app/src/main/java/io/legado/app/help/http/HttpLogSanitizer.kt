@@ -27,6 +27,8 @@ internal object HttpLogSanitizer {
         "key",
         "signature",
         "sign",
+        "xauthkey",
+        "xauthuser",
     )
     private val jsonSecretPattern = Regex(
         "(?i)(\\\"(?:password|passwd|token|access[_-]?token|refresh[_-]?token|secret|authorization|cookie|api[_-]?key|sign|signature)\\\"\\s*:\\s*\\\")([^\\\"]*)(\\\")"
