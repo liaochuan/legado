@@ -131,6 +131,21 @@ class KosyncClient(
         }
     }
 
+    suspend fun putDocumentInfo(document: String, coverUrl: String): Boolean {
+        val body = GSON.toJson(mapOf("cover_url" to coverUrl))
+            .toRequestBody("application/json; charset=UTF-8".toMediaType())
+        val response = execute(request("/api/v1/documents/$document/info").put(body).build())
+        response.use {
+            if (it.code == 401) {
+                throw KosyncException("KOSync unauthorized", 401)
+            }
+            if (!it.isSuccessful) {
+                throw KosyncException("KOSync put document info failed: HTTP ${it.code}", it.code)
+            }
+            return true
+        }
+    }
+
     private fun request(path: String): Request.Builder {
         return Request.Builder()
             .url("$root$path")

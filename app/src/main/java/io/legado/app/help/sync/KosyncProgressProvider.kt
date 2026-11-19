@@ -45,7 +45,7 @@ class KosyncProgressProvider(
         val mapper = mapperFor(book) ?: throw KosyncException("不支持的书类型")
         val remote = mapper.toRemote(progress, anchorText)
             ?: throw KosyncException("无法生成 XPointer")
-        return client.putProgress(
+        val timestamp = client.putProgress(
             document = document,
             progress = remote.progress,
             percentage = remote.percentage,
@@ -57,6 +57,10 @@ class KosyncProgressProvider(
                 authors = book.author.takeIf { it.isNotBlank() }?.take(512),
             ),
         )
+        KosyncCoverUrlProvider.coverUrl(book)?.let { coverUrl ->
+            runCatching { client.putDocumentInfo(document, coverUrl) }
+        }
+        return timestamp
     }
 
     override suspend fun pullAll(books: List<Book>): Map<String, RemoteProgress> {

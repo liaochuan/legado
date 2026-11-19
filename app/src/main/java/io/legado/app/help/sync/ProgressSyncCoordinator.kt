@@ -4,6 +4,8 @@ import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
 import io.legado.app.help.book.update
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 class ProgressSyncCoordinator(
     private val webDav: ProgressSyncProvider?,
@@ -176,25 +178,43 @@ class ProgressSyncCoordinator(
         onMessage: (String) -> Unit,
         onUploaded: (() -> Unit)?,
     ) {
-        var uploaded = false
-        if (kosync != null) {
-            try {
-                val timestamp = kosync.push(book, local, anchorText)
-                uploaded = true
-                if (timestamp != null) {
-                    book.kosyncTime = timestamp
-                    saveBook(book)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                onMessage("KOReader 上传失败")
+        val outcomes = coroutineScope {
+            val jobs = ArrayList<kotlinx.coroutines.Deferred<PushOutcome>>()
+            if (kosync != null) {
+                jobs.add(async { pushKosyncOutcome(book, local, anchorText) })
             }
+            if (webDav != null) {
+                jobs.add(async { pushWebDavOutcome(book, local) })
+            }
+            jobs.map { it.await() }
         }
-        if (webDav != null) {
-            if (pushWebDav(book, local, onMessage)) uploaded = true
+        val errors = outcomes.mapNotNull { it.error }
+        if (errors.isNotEmpty()) {
+            onMessage(errors.joinToString("；"))
         }
-        if (uploaded) onUploaded?.invoke()
+        if (outcomes.any { it.success }) {
+            onUploaded?.invoke()
+        }
+    }
+
+    private suspend fun pushKosyncOutcome(
+        book: Book,
+        progress: BookProgress,
+        anchorText: String?,
+    ): PushOutcome {
+        val kosync = kosync ?: return PushOutcome(false)
+        return try {
+            val timestamp = kosync.push(book, progress, anchorText)
+            if (timestamp != null) {
+                book.kosyncTime = timestamp
+                saveBook(book)
+            }
+            PushOutcome(true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            PushOutcome(false, "KOReader 上传失败")
+        }
     }
 
     private suspend fun pushWebDav(
@@ -202,15 +222,28 @@ class ProgressSyncCoordinator(
         progress: BookProgress,
         onMessage: (String) -> Unit,
     ): Boolean {
-        val webDav = webDav ?: return false
+        val outcome = pushWebDavOutcome(book, progress)
+        outcome.error?.let(onMessage)
+        return outcome.success
+    }
+
+    private suspend fun pushWebDavOutcome(
+        book: Book,
+        progress: BookProgress,
+    ): PushOutcome {
+        val webDav = webDav ?: return PushOutcome(false)
         return try {
             webDav.push(book, progress, null)
-            true
+            PushOutcome(true)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            onMessage("WebDAV 上传失败")
-            false
+            PushOutcome(false, "WebDAV 上传失败")
         }
     }
+
+    private data class PushOutcome(
+        val success: Boolean,
+        val error: String? = null,
+    )
 }

@@ -829,12 +829,15 @@ class ReadView(context: Context, attrs: AttributeSet) :
             9 -> callBack.changeReplaceRuleState()
             10 -> callBack.openChapterList()
             11 -> callBack.openSearchActivity(null)
-            12 -> ReadBook.syncProgress(
-                { progress -> callBack.sureNewProgress(progress) },
-                { context.longToastOnUi(context.getString(R.string.upload_book_success)) },
-                { context.longToastOnUi(context.getString(R.string.sync_book_progress_success)) },
-                onMessage = { context.longToastOnUi(it) },
-            )
+            12 -> {
+                context.longToastOnUi(context.getString(R.string.sync_progress_in_progress))
+                ReadBook.syncProgress(
+                    { progress -> callBack.sureNewProgress(progress) },
+                    { context.longToastOnUi(context.getString(R.string.upload_book_success)) },
+                    { context.longToastOnUi(context.getString(R.string.sync_book_progress_success)) },
+                    onMessage = { context.longToastOnUi(it) },
+                )
+            }
 
             13 -> {
                 if (BaseReadAloudService.isPlay()) {

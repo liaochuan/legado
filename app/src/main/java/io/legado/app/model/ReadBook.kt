@@ -18,6 +18,7 @@ import io.legado.app.data.entities.ReplaceRule
 import io.legado.app.data.entities.ReadRecord
 import io.legado.app.data.entities.updateSnapshot
 import io.legado.app.data.entities.saveWithCover
+import io.legado.app.R
 import io.legado.app.help.HighlightAnchor
 import io.legado.app.help.sync.AppProgressSync
 import io.legado.app.help.HighlightMatcher
@@ -817,6 +818,9 @@ object ReadBook : CoroutineScope by MainScope() {
 
     fun uploadProgress(toast: Boolean = false, successAction: (() -> Unit)? = null) {
         book?.let {
+            if (toast) {
+                appCtx.toastOnUi(R.string.sync_progress_in_progress)
+            }
             launch(IO) {
                 AppProgressSync.push(
                     it,

@@ -54,6 +54,7 @@ import io.legado.app.help.book.readProgress
 import io.legado.app.help.book.removeType
 import io.legado.app.help.book.update
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.sync.AppProgressSync
 import io.legado.app.help.config.LocalConfig
 import io.legado.app.help.webView.PooledWebView
 import io.legado.app.help.webView.WebJsExtensions
@@ -1550,6 +1551,9 @@ class BookInfoActivity :
             showCover(book)
             if (viewModel.inBookshelf) {
                 viewModel.saveBook(book, preserveCustomCoverUrl = false)
+            }
+            lifecycleScope.launch(IO) {
+                AppProgressSync.updateCover(book)
             }
         }
     }

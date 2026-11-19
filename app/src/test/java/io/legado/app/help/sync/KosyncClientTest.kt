@@ -24,6 +24,8 @@ class KosyncClientTest {
     private var lastAuthUser: String? = null
     private var lastAuthKey: String? = null
     private var lastPutBody: String? = null
+    private var lastDocumentInfoPath: String? = null
+    private var lastDocumentInfoBody: String? = null
     private val listPages = mutableListOf<String>()
     private var listIndex = 0
 
@@ -54,6 +56,11 @@ class KosyncClientTest {
                 listIndex++
                 TestHttpServer.Response(200, body)
             }
+        }
+        server.route("/api/v1/documents") { request ->
+            lastDocumentInfoPath = request.path
+            lastDocumentInfoBody = request.body
+            TestHttpServer.Response(200, """{"document":"doc"}""")
         }
         client = KosyncClient(
             baseUrl = server.baseUrl,
@@ -129,6 +136,15 @@ class KosyncClientTest {
         assertTrue(body.contains("\"book.epub\""))
         assertTrue(body.contains("\"书名\""))
         assertTrue(body.contains("\"作者\""))
+    }
+
+    @Test
+    fun `putDocumentInfo sends cover url`() = runBlocking {
+        assertTrue(client.putDocumentInfo("doc", "https://example.com/cover.jpg"))
+        assertEquals("/api/v1/documents/doc/info", lastDocumentInfoPath)
+        val body = requireNotNull(lastDocumentInfoBody)
+        assertTrue(body.contains("\"cover_url\""))
+        assertTrue(body.contains("https://example.com/cover.jpg"))
     }
 
     @Test

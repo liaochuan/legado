@@ -1773,4 +1773,5 @@
     <string name="kosync_test_s">检查登录和扩展接口</string>
     <string name="kosync_test_ok">KOSync 连接成功</string>
     <string name="kosync_test_fail">KOSync 连接失败</string>
+    <string name="sync_progress_in_progress">正在同步阅读进度…</string>
 </resources>

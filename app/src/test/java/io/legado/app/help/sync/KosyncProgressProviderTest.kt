@@ -15,6 +15,8 @@ class KosyncProgressProviderTest {
     private lateinit var server: TestHttpServer
     private lateinit var provider: KosyncProgressProvider
     private var lastPutBody: String? = null
+    private var lastDocumentInfoPath: String? = null
+    private var lastDocumentInfoBody: String? = null
     private val book = Book(
         bookUrl = "book",
         origin = io.legado.app.constant.BookType.localTag,
@@ -47,6 +49,11 @@ class KosyncProgressProviderTest {
                 200,
                 """{"items":[{"document":"doc","progress":"/body/DocFragment[1]/body/p[1]","percentage":0.5,"timestamp":10}],"next":null}""",
             )
+        }
+        server.route("/api/v1/documents") { request ->
+            lastDocumentInfoPath = request.path
+            lastDocumentInfoBody = request.body
+            TestHttpServer.Response(200, """{"document":"doc"}""")
         }
         provider = KosyncProgressProvider(
             client = KosyncClient(
@@ -85,6 +92,18 @@ class KosyncProgressProviderTest {
         assertTrue(body.contains("\"book.txt\""))
         assertTrue(body.contains("\"book\""))
         assertTrue(body.contains("\"author\""))
+    }
+
+    @Test
+    fun `push sends cover url when available`() = runBlocking {
+        book.customCoverUrl = "https://example.com/cover.jpg"
+        try {
+            provider.push(book, progress(2, 3))
+            assertEquals("/api/v1/documents/doc/info", lastDocumentInfoPath)
+            assertTrue(requireNotNull(lastDocumentInfoBody).contains("https://example.com/cover.jpg"))
+        } finally {
+            book.customCoverUrl = null
+        }
     }
 
     @Test

@@ -1886,4 +1886,5 @@
     <string name="kosync_test_s">Check login and extended API support</string>
     <string name="kosync_test_ok">KOSync connection OK</string>
     <string name="kosync_test_fail">KOSync connection failed</string>
+    <string name="sync_progress_in_progress">Syncing reading progress…</string>
 </resources>

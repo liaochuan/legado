@@ -6,12 +6,16 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import io.legado.app.R
 import io.legado.app.base.VMBaseActivity
 import io.legado.app.constant.BookType
 import io.legado.app.data.entities.Book
 import io.legado.app.databinding.ActivityBookInfoEditBinding
 import io.legado.app.help.config.AppConfig
+import io.legado.app.help.sync.AppProgressSync
+import kotlinx.coroutines.Dispatchers.IO
+import kotlinx.coroutines.launch
 import io.legado.app.lib.dialogs.alert
 import io.legado.app.help.book.addType
 import io.legado.app.help.book.hasEditedNetworkCover
@@ -167,10 +171,15 @@ class BookInfoEditActivity :
     }
 
     override fun coverChangeTo(coverUrl: String) {
-        viewModel.book?.customCoverUrl = coverUrl
-        viewModel.book?.persistedCoverUrl = null
-        binding.tieCoverUrl.setText(coverUrl)
-        upCover()
+        viewModel.book?.let { book ->
+            book.customCoverUrl = coverUrl
+            book.persistedCoverUrl = null
+            binding.tieCoverUrl.setText(coverUrl)
+            upCover()
+            lifecycleScope.launch(IO) {
+                AppProgressSync.updateCover(book)
+            }
+        }
     }
 
     private fun coverChangeTo(uri: Uri) {
