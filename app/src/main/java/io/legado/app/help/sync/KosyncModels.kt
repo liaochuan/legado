@@ -4,34 +4,34 @@ import com.google.gson.annotations.SerializedName
 import java.io.IOException
 
 data class KosyncProgressDto(
-    val document: String? = null,
-    val progress: String? = null,
-    val percentage: Double? = null,
-    val device: String? = null,
+    @SerializedName("document") val document: String? = null,
+    @SerializedName("progress") val progress: String? = null,
+    @SerializedName("percentage") val percentage: Double? = null,
+    @SerializedName("device") val device: String? = null,
     @SerializedName("device_id") val deviceId: String? = null,
-    val timestamp: Long? = null,
+    @SerializedName("timestamp") val timestamp: Long? = null,
 )
 
 data class KosyncMetadata(
-    val filename: String? = null,
-    val title: String? = null,
-    val authors: String? = null,
+    @SerializedName("filename") val filename: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("authors") val authors: String? = null,
 )
 
 data class KosyncListItem(
-    val document: String? = null,
-    val title: String? = null,
-    val author: String? = null,
-    val filename: String? = null,
-    val progress: String? = null,
-    val percentage: Double? = null,
+    @SerializedName("document") val document: String? = null,
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("author") val author: String? = null,
+    @SerializedName("filename") val filename: String? = null,
+    @SerializedName("progress") val progress: String? = null,
+    @SerializedName("percentage") val percentage: Double? = null,
     @SerializedName("device_id") val deviceId: String? = null,
-    val timestamp: Long? = null,
+    @SerializedName("timestamp") val timestamp: Long? = null,
 )
 
 data class KosyncListResponse(
-    val items: List<KosyncListItem> = emptyList(),
-    val next: String? = null,
+    @SerializedName("items") val items: List<KosyncListItem> = emptyList(),
+    @SerializedName("next") val next: String? = null,
 )
 
 class KosyncException(
