@@ -820,7 +820,14 @@ object ReadBook : CoroutineScope by MainScope() {
             launch(IO) {
                 AppProgressSync.push(
                     it,
-                    { message -> upMsg(message) },
+                    { message ->
+                        //后台自动同步失败不打断阅读，只在手动同步时提示
+                        if (toast) {
+                            appCtx.toastOnUi(message)
+                        } else {
+                            AppLog.put("同步阅读进度: $message")
+                        }
+                    },
                     successAction,
                     currentPageAnchorText(),
                 )
@@ -846,7 +853,8 @@ object ReadBook : CoroutineScope by MainScope() {
     fun syncProgress(
         newProgressAction: ((progress: BookProgress) -> Unit)? = null,
         uploadSuccessAction: (() -> Unit)? = null,
-        syncSuccessAction: (() -> Unit)? = null
+        syncSuccessAction: (() -> Unit)? = null,
+        onMessage: (String) -> Unit = { AppLog.put("同步阅读进度: $it") },
     ) {
         if (!AppConfig.syncBookProgress) return
         val book = book ?: return
@@ -856,7 +864,7 @@ object ReadBook : CoroutineScope by MainScope() {
                 plus = AppConfig.syncBookProgressPlus,
                 onApplyRemote = newProgressAction,
                 onPromptRemote = newProgressAction,
-                onMessage = { upMsg(it) },
+                onMessage = onMessage,
                 anchorText = currentPageAnchorText(),
                 onUploaded = uploadSuccessAction,
             )

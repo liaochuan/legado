@@ -18,6 +18,18 @@ class AppProgressSyncContractTest {
     }
 
     @Test
+    fun `automatic progress sync failures do not interrupt reading`() {
+        val readBook = File("src/main/java/io/legado/app/model/ReadBook.kt").readText()
+        assertFalse(readBook.contains("onMessage = { upMsg(it) }"))
+        assertTrue(readBook.contains("AppLog.put(\"同步阅读进度: "))
+        assertTrue(readBook.contains("appCtx.toastOnUi(message)"))
+
+        val readView =
+            File("src/main/java/io/legado/app/ui/book/read/page/ReadView.kt").readText()
+        assertTrue(readView.contains("onMessage = { context.longToastOnUi(it) }"))
+    }
+
+    @Test
     fun `startup filters kosync eligible books from webdav bulk`() {
         val source = File("src/main/java/io/legado/app/App.kt").readText()
         assertTrue(source.contains("AppProgressSync.syncAllOnStartup"))

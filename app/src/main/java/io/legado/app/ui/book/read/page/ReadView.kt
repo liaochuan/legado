@@ -832,7 +832,9 @@ class ReadView(context: Context, attrs: AttributeSet) :
             12 -> ReadBook.syncProgress(
                 { progress -> callBack.sureNewProgress(progress) },
                 { context.longToastOnUi(context.getString(R.string.upload_book_success)) },
-                { context.longToastOnUi(context.getString(R.string.sync_book_progress_success)) })
+                { context.longToastOnUi(context.getString(R.string.sync_book_progress_success)) },
+                onMessage = { context.longToastOnUi(it) },
+            )
 
             13 -> {
                 if (BaseReadAloudService.isPlay()) {
