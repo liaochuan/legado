@@ -112,12 +112,23 @@ class KosyncClientTest {
     fun `putProgress sends body and returns server timestamp`() = runBlocking {
         assertEquals(
             123L,
-            client.putProgress("doc", "/body/DocFragment[1]/body/p[2]", 0.5, "Legado", "device"),
+            client.putProgress(
+                "doc",
+                "/body/DocFragment[1]/body/p[2]",
+                0.5,
+                "Legado",
+                "device",
+                KosyncMetadata(filename = "book.epub", title = "书名", authors = "作者"),
+            ),
         )
         val body = requireNotNull(lastPutBody)
         assertTrue(body.contains("\"document\""))
         assertTrue(body.contains("\"device_id\""))
         assertTrue(body.contains("\"Legado\""))
+        assertTrue(body.contains("\"metadata\""))
+        assertTrue(body.contains("\"book.epub\""))
+        assertTrue(body.contains("\"书名\""))
+        assertTrue(body.contains("\"作者\""))
     }
 
     @Test

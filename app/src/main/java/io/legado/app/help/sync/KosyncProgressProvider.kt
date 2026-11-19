@@ -51,6 +51,11 @@ class KosyncProgressProvider(
             percentage = remote.percentage,
             device = deviceName,
             deviceId = deviceId,
+            metadata = KosyncMetadata(
+                filename = book.originName.takeIf { it.isNotBlank() }?.take(512),
+                title = book.name.takeIf { it.isNotBlank() }?.take(512),
+                authors = book.author.takeIf { it.isNotBlank() }?.take(512),
+            ),
         )
     }
 

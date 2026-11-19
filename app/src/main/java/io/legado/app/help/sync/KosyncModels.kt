@@ -12,6 +12,12 @@ data class KosyncProgressDto(
     val timestamp: Long? = null,
 )
 
+data class KosyncMetadata(
+    val filename: String? = null,
+    val title: String? = null,
+    val authors: String? = null,
+)
+
 data class KosyncListItem(
     val document: String? = null,
     val title: String? = null,

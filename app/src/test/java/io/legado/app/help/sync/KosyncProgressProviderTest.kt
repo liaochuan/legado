@@ -14,6 +14,7 @@ class KosyncProgressProviderTest {
 
     private lateinit var server: TestHttpServer
     private lateinit var provider: KosyncProgressProvider
+    private var lastPutBody: String? = null
     private val book = Book(
         bookUrl = "book",
         origin = io.legado.app.constant.BookType.localTag,
@@ -34,7 +35,10 @@ class KosyncProgressProviderTest {
                     """{"document":"doc","progress":"/body/DocFragment[1]/body/p[1]","percentage":0.5,"timestamp":10}""",
                 )
 
-                "PUT" -> TestHttpServer.Response(200, """{"document":"doc","timestamp":20}""")
+                "PUT" -> {
+                    lastPutBody = request.body
+                    TestHttpServer.Response(200, """{"document":"doc","timestamp":20}""")
+                }
                 else -> TestHttpServer.Response(405, "{}")
             }
         }
@@ -76,6 +80,11 @@ class KosyncProgressProviderTest {
     fun `push maps local progress and returns timestamp`() = runBlocking {
         val timestamp = provider.push(book, progress(2, 3))
         assertEquals(20L, timestamp)
+        val body = requireNotNull(lastPutBody)
+        assertTrue(body.contains("\"metadata\""))
+        assertTrue(body.contains("\"book.txt\""))
+        assertTrue(body.contains("\"book\""))
+        assertTrue(body.contains("\"author\""))
     }
 
     @Test

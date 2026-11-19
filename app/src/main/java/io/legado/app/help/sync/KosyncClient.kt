@@ -58,14 +58,18 @@ class KosyncClient(
         percentage: Double,
         device: String,
         deviceId: String,
+        metadata: KosyncMetadata? = null,
     ): Long? {
-        val payload = mapOf(
-            "document" to document,
-            "progress" to progress,
-            "percentage" to percentage,
-            "device" to device,
-            "device_id" to deviceId,
-        )
+        val payload = buildMap<String, Any> {
+            put("document", document)
+            put("progress", progress)
+            put("percentage", percentage)
+            put("device", device)
+            put("device_id", deviceId)
+            if (metadata != null) {
+                put("metadata", metadata)
+            }
+        }
         val body = GSON.toJson(payload)
             .toRequestBody("application/json; charset=UTF-8".toMediaType())
         val response = execute(request("/syncs/progress").put(body).build())
