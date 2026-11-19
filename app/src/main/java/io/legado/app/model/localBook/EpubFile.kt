@@ -313,20 +313,24 @@ class EpubFile(var book: Book) : AutoCloseable {
     private fun upBookCover(fastCheck: Boolean = false) {
         try {
             epubBook?.let {
-                if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = LocalBook.getCoverPath(book)
-                }
-                if (fastCheck && File(book.coverUrl!!).exists()) {
+                val coverPath = LocalBook.getCoverPath(book)
+                if (fastCheck && File(coverPath).isFile) {
+                    book.coverUrl = resolveLocalBookCover(coverPath, true, book.coverUrl)
                     return
                 }
                 /*部分书籍DRM处理后，封面获取异常，待优化*/
                 it.coverImage?.inputStream?.use { input ->
                     val cover = BitmapFactory.decodeStream(input)
-                    val out = FileOutputStream(FileUtils.createFileIfNotExist(book.coverUrl!!))
+                    val out = FileOutputStream(FileUtils.createFileIfNotExist(coverPath))
                     cover.compress(Bitmap.CompressFormat.JPEG, 90, out)
                     out.flush()
                     out.close()
                 } ?: AppLog.putDebug("Epub: 封面获取为空. path: ${book.bookUrl}")
+                book.coverUrl = resolveLocalBookCover(
+                    coverPath,
+                    File(coverPath).isFile,
+                    book.coverUrl,
+                )
             }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)

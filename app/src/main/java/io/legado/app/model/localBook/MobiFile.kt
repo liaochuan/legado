@@ -283,20 +283,24 @@ class MobiFile(var book: Book) : AutoCloseable {
     private fun upBookCover(fastCheck: Boolean = false) {
         try {
             mobiBook?.let {
-                if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = LocalBook.getCoverPath(book)
-                }
-                if (fastCheck && File(book.coverUrl!!).exists()) {
+                val coverPath = LocalBook.getCoverPath(book)
+                if (fastCheck && File(coverPath).isFile) {
+                    book.coverUrl = resolveLocalBookCover(coverPath, true, book.coverUrl)
                     return
                 }
                 it.getCover()?.let { bytes ->
                     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    val file = FileUtils.createFileIfNotExist(book.coverUrl!!)
+                    val file = FileUtils.createFileIfNotExist(coverPath)
                     FileOutputStream(file).use { out ->
                         bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                         out.flush()
                     }
                 }
+                book.coverUrl = resolveLocalBookCover(
+                    coverPath,
+                    File(coverPath).isFile,
+                    book.coverUrl,
+                )
             }
         } catch (e: Exception) {
             AppLog.put("加载书籍封面失败\n${e.localizedMessage}", e)

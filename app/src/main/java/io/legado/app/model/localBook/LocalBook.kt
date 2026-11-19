@@ -635,7 +635,13 @@ object LocalBook {
         onLineBook ?: return localBook
         localBook.name = onLineBook.name.ifBlank { localBook.name }
         localBook.author = onLineBook.author.ifBlank { localBook.author }
-        localBook.coverUrl = onLineBook.coverUrl
+        //已解析出的本地封面优先，避免书源网络封面失效后封面丢失
+        val localCover = getCoverPath(localBook)
+        localBook.coverUrl = resolveLocalBookCover(
+            localCover,
+            File(localCover).isFile,
+            onLineBook.coverUrl,
+        )
         localBook.intro =
             if (onLineBook.intro.isNullOrBlank()) localBook.intro else onLineBook.intro
         localBook.save()

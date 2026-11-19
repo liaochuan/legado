@@ -80,13 +80,17 @@ class UmdFile(var book: Book) {
     private fun upBookCover(fastCheck: Boolean = false) {
         try {
             umdBook?.let {
-                if (book.coverUrl.isNullOrEmpty()) {
-                    book.coverUrl = LocalBook.getCoverPath(book)
-                }
-                if (fastCheck && File(book.coverUrl!!).exists()) {
+                val coverPath = LocalBook.getCoverPath(book)
+                if (fastCheck && File(coverPath).isFile) {
+                    book.coverUrl = resolveLocalBookCover(coverPath, true, book.coverUrl)
                     return
                 }
-                FileUtils.writeBytes(book.coverUrl!!, it.cover.coverData)
+                FileUtils.writeBytes(coverPath, it.cover.coverData)
+                book.coverUrl = resolveLocalBookCover(
+                    coverPath,
+                    File(coverPath).isFile,
+                    book.coverUrl,
+                )
             }
         } catch (e: Exception) {
             e.printOnDebug()
