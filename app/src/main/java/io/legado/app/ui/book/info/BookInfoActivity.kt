@@ -1252,7 +1252,9 @@ class BookInfoActivity :
                             orientation = LinearLayout.VERTICAL
                             setPadding(16.dpToPx(), 0, 16.dpToPx(), 0)
                             addView(deleteOriginalCheckBox)
-                            if (AppWebDav.defaultBookWebDav != null) {
+                            if (AppWebDav.defaultBookWebDav != null &&
+                                book.origin.startsWith(BookType.webDavTag)
+                            ) {
                                 deleteRemoteCheckBox = CheckBox(this@BookInfoActivity).apply {
                                     setText(R.string.delete_webdav_book_file)
                                 }

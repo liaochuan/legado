@@ -17,6 +17,7 @@ import io.legado.app.lib.theme.primaryColor
 import io.legado.app.utils.GSON
 import io.legado.app.utils.applyTint
 import io.legado.app.utils.setLayout
+import io.legado.app.utils.toastOnUi
 import io.legado.app.utils.viewbindingdelegate.viewBinding
 import org.json.JSONObject
 
@@ -60,6 +61,11 @@ class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server, t
                     dismissAllowingStateLoss()
                 }
             }
+            R.id.menu_test_connection -> {
+                viewModel.testConnection(getServer()) { _, message ->
+                    toastOnUi(message)
+                }
+            }
         }
         return true
     }
@@ -68,10 +74,12 @@ class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server, t
         binding.etName.setText(server?.name)
         binding.spType.setSelection(
             when (server?.type) {
+                Server.TYPE.OPDS -> 1
                 else -> 0
             }
         )
         when (server?.type) {
+            Server.TYPE.OPDS -> upWebDavServerUi(server.getConfigJsonObject())
             else -> upWebDavServerUi(server?.getConfigJsonObject())
         }
     }
@@ -109,9 +117,11 @@ class ServerConfigDialog() : BaseDialogFragment(R.layout.dialog_webdav_server, t
         val server = viewModel.mServer?.copy() ?: Server()
         server.name = binding.etName.text.toString()
         server.type = when (binding.spType.selectedItemPosition) {
+            1 -> Server.TYPE.OPDS
             else -> Server.TYPE.WEBDAV
         }
         server.config = when (server.type) {
+            Server.TYPE.OPDS -> GSON.toJson(getWebDavConfig())
             else -> GSON.toJson(getWebDavConfig())
         }
         return server

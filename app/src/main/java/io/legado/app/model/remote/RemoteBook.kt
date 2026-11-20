@@ -11,7 +11,14 @@ data class RemoteBook(
     val size: Long,
     val lastModify: Long,
     var contentType: String = "folder",
-    var isOnBookShelf: Boolean = false
+    var isOnBookShelf: Boolean = false,
+    val links: List<RemoteBookLink> = emptyList(),
+    val coverUrl: String? = null,
+    val coverHeaders: Map<String, String> = emptyMap(),
+    val author: String? = null,
+    val localFileName: String? = null,
+    val intro: String? = null,
+    val categories: List<String> = emptyList(),
 ) {
 
     val isDir get() = contentType == "folder"
@@ -29,3 +36,11 @@ data class RemoteBook(
     }
 
 }
+
+data class RemoteBookLink(
+    val href: String,
+    val mimeType: String?,
+    val length: Long?,
+    val label: String? = null,
+    val extension: String? = null,
+)

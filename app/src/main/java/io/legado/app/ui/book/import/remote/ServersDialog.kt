@@ -7,6 +7,7 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
+import androidx.core.view.isVisible
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -88,11 +89,17 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
         lifecycleScope.launch {
             appDb.serverDao.observeAll().catch {
                 AppLog.put("服务器配置界面获取数据失败\n${it.localizedMessage}", it)
-            }.flowOn(IO).collect {
-                adapter.setItems(it)
+            }.flowOn(IO).collect { servers ->
+                adapter.setItems(listOf(currentWebDav()) + servers)
             }
         }
     }
+
+    private fun currentWebDav() = Server(
+        id = DEFAULT_WEBDAV_ID,
+        name = getString(R.string.current_webdav),
+        type = Server.TYPE.WEBDAV,
+    )
 
     override fun onMenuItemClick(item: MenuItem): Boolean {
         when (item.itemId) {
@@ -151,6 +158,9 @@ class ServersDialog : BaseDialogFragment(R.layout.dialog_recycler_view),
                 binding.root.setBackgroundColor(context.backgroundColor)
                 binding.rbServer.text = item.name
                 binding.rbServer.isChecked = item.id == selectServerId
+                val isDefault = item.id == DEFAULT_WEBDAV_ID
+                binding.ivEdit.isVisible = !isDefault
+                binding.ivDelete.isVisible = !isDefault
             } else {
                 binding.rbServer.isChecked = item.id == selectServerId
             }

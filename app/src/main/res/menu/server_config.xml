@@ -8,4 +8,9 @@
         android:title="@string/action_save"
         app:showAsAction="always" />
 
+    <item
+        android:id="@+id/menu_test_connection"
+        android:title="@string/test_connection"
+        app:showAsAction="never" />
+
 </menu>

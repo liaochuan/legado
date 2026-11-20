@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:dcterms="http://purl.org/dc/terms/">
+  <title>Calibre-Web</title>
+  <link rel="next" href="/opds/new?offset=60"/>
+  <entry>
+    <title>示例 书名</title>
+    <id>urn:uuid:11111111-1111-1111-1111-111111111111</id>
+    <updated>2026-01-02T03:04:05+00:00</updated>
+    <author>
+      <name>示例作者</name>
+    </author>
+    <dcterms:language>zho</dcterms:language>
+    <category term="分类A" label="分类A"/>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml">示例简介</div></content>
+    <link type="image/jpeg" href="/opds/cover/1" rel="http://opds-spec.org/image"/>
+    <link type="image/jpeg" href="/opds/cover/1" rel="http://opds-spec.org/image/thumbnail"/>
+    <link rel="http://opds-spec.org/acquisition" href="/opds/download/1/epub/" length="1000" title="EPUB" type="application/epub+zip"/>
+    <link rel="http://opds-spec.org/acquisition" href="/opds/download/1/txt/" length="2000" title="TXT" type="text/plain"/>
+  </entry>
+  <entry>
+    <title>另一本</title>
+    <id>urn:uuid:22222222-2222-2222-2222-222222222222</id>
+    <updated>2026-01-03T03:04:05+00:00</updated>
+    <author>
+      <name>另一位作者</name>
+    </author>
+    <link rel="http://opds-spec.org/acquisition" href="/opds/download/2/txt/" length="3000" title="TXT" type="text/plain"/>
+  </entry>
+</feed>

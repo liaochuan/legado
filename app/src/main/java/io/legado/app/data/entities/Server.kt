@@ -23,7 +23,8 @@ data class Server(
 ) : Parcelable {
 
     enum class TYPE {
-        WEBDAV
+        WEBDAV,
+        OPDS
     }
 
     override fun hashCode(): Int {
@@ -47,8 +48,19 @@ data class Server(
         return if (type == TYPE.WEBDAV) GSON.fromJsonObject<WebDavConfig>(config).getOrNull() else null
     }
 
+    fun getOpdsConfig(): OpdsConfig? {
+        return if (type == TYPE.OPDS) GSON.fromJsonObject<OpdsConfig>(config).getOrNull() else null
+    }
+
     @Parcelize
     data class WebDavConfig(
+        var url: String,
+        var username: String,
+        var password: String
+    ) : Parcelable
+
+    @Parcelize
+    data class OpdsConfig(
         var url: String,
         var username: String,
         var password: String

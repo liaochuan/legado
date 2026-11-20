@@ -35,4 +35,22 @@ abstract class RemoteBookManager {
     @Throws(Exception::class)
     abstract suspend fun delete(remoteBookUrl: String)
 
+    /**
+     * 是否支持服务端搜索
+     */
+    open val supportsSearch: Boolean
+        get() = false
+
+    /**
+     * 服务端搜索
+     */
+    @Throws(Exception::class)
+    open suspend fun search(key: String): MutableList<RemoteBook> = mutableListOf()
+
+    /**
+     * 加载当前目录的下一页
+     */
+    @Throws(Exception::class)
+    open suspend fun loadNextPage(path: String): MutableList<RemoteBook> = mutableListOf()
+
 }

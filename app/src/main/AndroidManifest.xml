@@ -318,6 +318,9 @@
         <activity
             android:name=".ui.book.import.remote.RemoteBookActivity"
             android:launchMode="singleTop" />
+        <activity
+            android:name=".ui.book.import.remote.OpdsBookInfoActivity"
+            android:launchMode="singleTop" />
         <!-- 发现界面 -->
         <activity
             android:name=".ui.book.explore.ExploreShowActivity"

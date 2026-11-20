@@ -14,7 +14,8 @@ class ImportSelectionCountResetTest {
             "\n    private fun alertDirectoryGroup",
         )
         val remoteAction = mainAction(
-            projectFile("src/main/java/io/legado/app/ui/book/import/remote/RemoteBookActivity.kt")
+            projectFile("src/main/java/io/legado/app/ui/book/import/remote/RemoteBookActivity.kt"),
+            "\n    private fun goBackDir",
         )
 
         listOf(localAction, remoteAction).forEach { action ->

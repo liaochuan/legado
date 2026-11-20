@@ -82,6 +82,8 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
 
     abstract fun onSearchTextChange(newText: String?)
 
+    open fun onSearchTextSubmit(newText: String?) {}
+
     protected fun startReadBook(book: Book) {
         startActivityForBook(book)
     }
@@ -154,6 +156,7 @@ abstract class BaseImportBookActivity<VM : ViewModel> :
         searchView.isSubmitButtonEnabled = true
         searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
             override fun onQueryTextSubmit(query: String?): Boolean {
+                onSearchTextSubmit(query)
                 return false
             }
 

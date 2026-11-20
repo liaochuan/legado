@@ -3,116 +3,157 @@ package io.legado.app.ui.book.import.remote
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.ViewGroup
+import androidx.core.view.isInvisible
+import androidx.core.view.isVisible
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.model.GlideUrl
 import io.legado.app.R
 import io.legado.app.base.adapter.ItemViewHolder
 import io.legado.app.base.adapter.RecyclerAdapter
 import io.legado.app.constant.AppConst
-import io.legado.app.databinding.ItemImportBookBinding
+import io.legado.app.databinding.ItemRemoteBookBinding
+import io.legado.app.help.glide.GlideHeaders
 import io.legado.app.model.remote.RemoteBook
 import io.legado.app.utils.ConvertUtils
-import io.legado.app.utils.gone
-import io.legado.app.utils.invisible
-import io.legado.app.utils.visible
 
-
-/**
- * 适配器
- * @author qianfanguojin
- */
 class RemoteBookAdapter(context: Context, val callBack: CallBack) :
-    RecyclerAdapter<RemoteBook, ItemImportBookBinding>(context) {
+    RecyclerAdapter<RemoteBook, ItemRemoteBookBinding>(context) {
+
     var selected = hashSetOf<RemoteBook>()
     var checkableCount = 0
+    var isOpds = false
+    private var selectionMode = false
 
-    override fun getViewBinding(parent: ViewGroup): ItemImportBookBinding {
-        return ItemImportBookBinding.inflate(inflater, parent, false)
+    override fun getViewBinding(parent: ViewGroup): ItemRemoteBookBinding {
+        return ItemRemoteBookBinding.inflate(inflater, parent, false)
     }
 
     override fun onCurrentListChanged() {
         upCheckableCount()
     }
 
-    /**
-     * 绑定RecycleView 中每一个项的视图和数据
-     */
     override fun convert(
         holder: ItemViewHolder,
-        binding: ItemImportBookBinding,
+        binding: ItemRemoteBookBinding,
         item: RemoteBook,
         payloads: MutableList<Any>
     ) {
         binding.run {
             if (payloads.isEmpty()) {
-                if (item.isDir) {
-                    ivIcon.setImageResource(R.drawable.ic_folder)
-                    ivIcon.visible()
-                    cbSelect.invisible()
-                    llBrief.gone()
-                    cbSelect.isChecked = false
-                } else {
-                    if (item.isOnBookShelf) {
-                        ivIcon.setImageResource(R.drawable.ic_book_has)
-                        ivIcon.visible()
-                        cbSelect.invisible()
-                    } else {
-                        ivIcon.invisible()
-                        cbSelect.visible()
-                    }
-                    llBrief.visible()
-                    tvTag.text = item.contentType
-                    tvSize.text = ConvertUtils.formatFileSize(item.size)
-                    tvDate.text = AppConst.dateFormat.format(item.lastModify)
-                    cbSelect.isChecked = selected.contains(item)
-                }
                 tvName.text = item.filename
-            } else {
-                cbSelect.isChecked = selected.contains(item)
+                if (item.isDir) {
+                    ivCover.isVisible = false
+                    ivIcon.isVisible = true
+                    cbSelect.isVisible = false
+                    tvAuthor.isVisible = false
+                    tvIntro.isVisible = false
+                    llBrief.isVisible = false
+                } else {
+                    ivIcon.isVisible = false
+                    ivCover.isVisible = true
+                    tvAuthor.text = item.author.orEmpty()
+                    tvAuthor.isVisible = !item.author.isNullOrBlank()
+                    tvIntro.text = item.intro.orEmpty()
+                    tvIntro.isVisible = !item.intro.isNullOrBlank()
+                    llBrief.isVisible = true
+                    tvTag.text = if (item.isOnBookShelf) {
+                        context.getString(R.string.downloaded)
+                    } else {
+                        item.links.mapNotNull { it.extension?.uppercase() }
+                            .distinct()
+                            .ifEmpty { listOf(item.contentType) }
+                            .joinToString(" / ")
+                    }
+                    tvSize.text = if (item.size > 0) {
+                        ConvertUtils.formatFileSize(item.size)
+                    } else {
+                        ""
+                    }
+                    tvDate.text = if (item.lastModify > 0) {
+                        AppConst.dateFormat.format(item.lastModify)
+                    } else {
+                        ""
+                    }
+                    loadCover(binding, item)
+                }
             }
+            cbSelect.isVisible = !item.isDir && !item.isOnBookShelf && selectionMode
+            cbSelect.isChecked = selected.contains(item)
         }
     }
 
-    override fun registerListener(holder: ItemViewHolder, binding: ItemImportBookBinding) {
+    private fun loadCover(binding: ItemRemoteBookBinding, item: RemoteBook) {
+        val coverUrl = item.coverUrl
+        if (coverUrl.isNullOrBlank()) {
+            Glide.with(context).clear(binding.ivCover)
+            binding.ivCover.setImageResource(R.drawable.image_cover_default)
+            return
+        }
+        Glide.with(context)
+            .load(GlideUrl(coverUrl, GlideHeaders(HashMap(item.coverHeaders))))
+            .placeholder(R.drawable.image_cover_default)
+            .error(R.drawable.image_cover_default)
+            .into(binding.ivCover)
+    }
+
+    override fun registerListener(holder: ItemViewHolder, binding: ItemRemoteBookBinding) {
         holder.itemView.setOnClickListener {
-            getItem(holder.layoutPosition)?.let {
-                if (it.isDir) {
-                    callBack.openDir(it)
-                } else if (!it.isOnBookShelf) {
-                    if (!selected.contains(it)) {
-                        selected.add(it)
-                    } else {
-                        selected.remove(it)
-                    }
-                    notifyItemChanged(holder.layoutPosition, true)
-                    callBack.upCountView()
-                } else {
-                    /* 点击开始阅读 */
-                    callBack.startRead(it)
+            getItem(holder.bindingAdapterPosition)?.let { item ->
+                when {
+                    item.isDir -> callBack.openDir(item)
+                    item.isOnBookShelf -> callBack.startRead(item)
+                    !isOpds -> toggleSelect(item)
+                    selectionMode -> toggleSelect(item)
+                    else -> callBack.openBookInfo(item)
                 }
             }
         }
         holder.itemView.setOnLongClickListener {
-            getItem(holder.layoutPosition)?.let { remoteBook ->
-                if (remoteBook.isOnBookShelf) {
-                    callBack.addToBookShelfAgain(remoteBook)
+            getItem(holder.bindingAdapterPosition)?.let { item ->
+                when {
+                    item.isOnBookShelf -> if (!isOpds) callBack.addToBookShelfAgain(item)
+                    isOpds -> {
+                        if (!selectionMode) {
+                            selectionMode = true
+                            notifyDataSetChanged()
+                        }
+                        toggleSelect(item)
+                    }
                 }
             }
             true
         }
     }
 
-    private fun upCheckableCount() {
-        checkableCount = 0
-        getItems().forEach {
-            if (!it.isDir && !it.isOnBookShelf) {
-                checkableCount++
-            }
+    private fun toggleSelect(item: RemoteBook) {
+        if (item.isDir || item.isOnBookShelf) return
+        if (!selected.add(item)) {
+            selected.remove(item)
         }
+        val position = getItems().indexOf(item)
+        if (position >= 0) {
+            notifyItemChanged(position, true)
+        }
+        callBack.upCountView()
+    }
+
+    fun exitSelectionMode() {
+        if (!selectionMode && selected.isEmpty()) return
+        selectionMode = false
+        selected.clear()
+        notifyDataSetChanged()
+        callBack.upCountView()
+    }
+
+    private fun upCheckableCount() {
+        checkableCount = getItems().count { !it.isDir && !it.isOnBookShelf }
         callBack.upCountView()
     }
 
     @SuppressLint("NotifyDataSetChanged")
     fun selectAll(selectAll: Boolean) {
         if (selectAll) {
+            selectionMode = true
             getItems().forEach {
                 if (!it.isDir && !it.isOnBookShelf) {
                     selected.add(it)
@@ -120,22 +161,22 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
             }
         } else {
             selected.clear()
+            selectionMode = false
         }
         notifyDataSetChanged()
         callBack.upCountView()
     }
 
     fun revertSelection() {
+        selectionMode = true
         getItems().forEach {
             if (!it.isDir && !it.isOnBookShelf) {
-                if (selected.contains(it)) {
+                if (!selected.add(it)) {
                     selected.remove(it)
-                } else {
-                    selected.add(it)
                 }
             }
         }
-        notifyItemRangeChanged(0, itemCount, true)
+        notifyDataSetChanged()
         callBack.upCountView()
     }
 
@@ -147,9 +188,9 @@ class RemoteBookAdapter(context: Context, val callBack: CallBack) :
         }
     }
 
-
     interface CallBack {
         fun openDir(remoteBook: RemoteBook)
+        fun openBookInfo(remoteBook: RemoteBook)
         fun upCountView()
         fun startRead(remoteBook: RemoteBook)
         fun addToBookShelfAgain(remoteBook: RemoteBook)

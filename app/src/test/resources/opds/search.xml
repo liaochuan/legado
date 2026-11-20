@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Calibre-Web</title>
+  <entry>
+    <title>搜索结果一</title>
+    <id>urn:uuid:33333333-3333-3333-3333-333333333333</id>
+    <updated>2026-01-04T03:04:05+00:00</updated>
+    <author>
+      <name>搜索作者</name>
+    </author>
+    <link rel="http://opds-spec.org/acquisition" href="/opds/download/3/epub/" length="4000" title="EPUB" type="application/epub+zip"/>
+  </entry>
+  <entry>
+    <title>搜索结果二</title>
+    <id>urn:uuid:44444444-4444-4444-4444-444444444444</id>
+    <updated>2026-01-05T03:04:05+00:00</updated>
+    <link rel="http://opds-spec.org/acquisition" href="/opds/download/4/txt/" length="5000" title="TXT" type="text/plain"/>
+  </entry>
+</feed>
