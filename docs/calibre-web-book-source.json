@@ -1,0 +1,50 @@
+[
+  {
+    "bookSourceName": "Calibre-Web",
+    "bookSourceComment": "把 bookSourceUrl 改成你的 calibre-web 地址；私有实例请在书源管理中登录。",
+    "bookSourceType": 3,
+    "bookSourceUrl": "https://calibre.example.com",
+    "customButton": false,
+    "customOrder": 0,
+    "enabled": true,
+    "enabledCookieJar": true,
+    "enabledExplore": true,
+    "eventListener": false,
+    "exploreUrl": "@js:(function(){\n    let discovery = []\n    let doc = org.jsoup.Jsoup.parse(java.ajax(baseUrl))\n    let items = doc.select(\".navigation>ul a\")\n\n    function generateDiscoveryFromSecondary(pageSource){\n        let page =org.jsoup.Jsoup.parse(pageSource)\n        let items = page.select(\".container .row a\")\n        if (items.length == 0){\n            return []\n        }\n        let result = []\n        for(let i = 0; i < items.length; i++){\n            let e = items[i]\n            let href = e.attr('href')\n            // 可翻页\n            if(href.match(/\\/\\d+$/)){\n                href += '/{{page}}'\n            }\n            result.push({\n                title: e.text(),\n                url: href,\n                style: {\n                    layout_wrapBefore: i == 0\n                }\n            })\n        }\n        return result\n    }\n    function isSecondaryList(pageSource){\n        return generateDiscoveryFromSecondary(pageSource).length != 0\n    }\n    for(let key in items){\n        let href = baseUrl + items[key].attr(\"href\")\n        let pageSource = java.ajax(href)\n        let secondary = isSecondaryList(pageSource)\n        // 可翻页\n        if(href.match(/\\/\\d+$/)){\n            href += '/{{page}}'\n        }\n        discovery.push({\n            title: items[key].text(),\n            style: {\n                layout_flexGrow: 1,\n                layout_alignSelf: \"stretch\",\n                layout_flexShrink: 0,\n                layout_wrapBefore: true,\n            },\n            url: isSecondaryList(pageSource) ? undefined : href\n        })\n        if(secondary){\n            for(let e of generateDiscoveryFromSecondary(pageSource)){\n                discovery.push(e)\n            }\n        }\n      \n    }\n    return JSON.stringify(discovery)\n})()",
+    "lastUpdateTime": 0,
+    "loginUrl": "/login",
+    "loginUi": "",
+    "loginCheckJs": "",
+    "respondTime": 180000,
+    "ruleBookInfo": {
+      "author": "@css:.book-meta>.author>a@text",
+      "coverUrl": "@css:img#detailcover@src",
+      "downloadUrls": "@css:.btn-group a[href*=\"/download\"]@href",
+      "intro": "@css:.comments@text",
+      "kind": "@css:.tags a.btn@text",
+      "lastChapter": "@css:.publishing-date@text",
+      "name": "@css:.book-meta>h2@text"
+    },
+    "ruleContent": {},
+    "ruleExplore": {
+      "author": "@css:a.author-name@text",
+      "bookList": "@css:.load-more div.book",
+      "bookUrl": "@css:div.cover>a@href",
+      "coverUrl": "@css:img[src]@src",
+      "name": "@css:p[title]@text"
+    },
+    "ruleSearch": {
+      "author": "@css:a.author-name@text",
+      "bookList": "@css:div.book",
+      "bookUrl": "@css:div.cover>a@href",
+      "checkKeyWord": "抽象代数",
+      "coverUrl": "@css:img[src]@src",
+      "name": "@css:p[title]@text"
+    },
+    "ruleToc": {
+      "nextTocUrl": "@css:li.page-next>a.next@href"
+    },
+    "searchUrl": "/search/stored/1/{{page}}?query={{key}}",
+    "weight": 0
+  }
+]
