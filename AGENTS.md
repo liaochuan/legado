@@ -243,8 +243,15 @@ app/src/main/java/io/legado/app/
 1. 同步上游：在 GitHub 执行 Sync fork，然后本地切到 `master`，执行 `git pull --ff-only origin master`。
 2. 开发：切回 `liaocl`；需要吸收 `master` 更新时用 `git rebase master`（或 `git merge master`，与团队约定保持一致）。
 3. 推送：首次 `git push -u origin liaocl`，之后 `git push`。
-4. 提 PR：从 `liaocl` 发起，目标分支按仓库约定选择（通常是 fork 的 `master`）；不要直接把开发提交放在 `master` 上。
+4. 提 PR：默认只用于个人 fork 内部整理，不向上游 `gedoor/legado` 提 PR（改动多为 AI 辅助开发、未做完整代码审查，避免污染上游）；确需上游化时单独拆分支、逐项审查后再提。
 5. 提 PR 前确认 `liaocl` 与 `master` 的差异只包含本次改动；不要 force-push 公共分支，改写已推送历史前先征得同意。
+
+### 自定义修改清单
+
+- 根目录 `README.md` 顶部维护「相较上游的修改」清单，作为 `liaocl` 分支与上游差异的唯一索引，并与代码同一次提交更新。
+- 新增、修改或回退任何与上游不同的行为时，同步增删对应条目；删除功能时不要留下失效描述。
+- 新增界面入口时必须给出具体操作路径，从一级界面写起（例如「书架 → 右上角「⋮」→ 网络书库」），不能只写功能名。
+- 清单需说明本分支会不定时同步上游，以及改动未经完整代码审查、不向上游提 PR 的原因。
 
 ## 提交与 PR
 
