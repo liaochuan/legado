@@ -839,6 +839,7 @@ object ReadBook : CoroutineScope by MainScope() {
                     successAction,
                     currentPageAnchorText(),
                     overrideCloud,
+                    currentProgress(),
                 )
                 ensureActive()
                 it.update()
@@ -853,6 +854,18 @@ object ReadBook : CoroutineScope by MainScope() {
             ?.text
             ?.trim()
             ?.take(40)
+    }
+
+    /**
+     * 阅读器里的实时进度。book 的 durChapterIndex/durChapterPos 由 globalExecutor 异步落库，
+     * 翻页后立刻同步可能仍是旧值，会被误判成「位置相同」或上传旧位置。
+     */
+    fun currentProgress(): BookProgress? {
+        val book = book ?: return null
+        return BookProgress(book).copy(
+            durChapterIndex = durChapterIndex,
+            durChapterPos = durChapterPos,
+        )
     }
 
     /**
@@ -876,9 +889,11 @@ object ReadBook : CoroutineScope by MainScope() {
                 onMessage = onMessage,
                 anchorText = currentPageAnchorText(),
                 onUploaded = uploadSuccessAction,
+                localProgress = currentProgress(),
             )
         }.onError {
             AppLog.put("同步阅读进度失败", it)
+            onMessage("同步进度失败：${it.localizedMessage}")
         }
     }
 

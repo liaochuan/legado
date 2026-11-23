@@ -53,6 +53,36 @@ class ProgressSyncCoordinatorTest {
     }
 
     @Test
+    fun `sync uses live local progress instead of stale book fields`() = runBlocking {
+        book.kosyncTime = 10
+        book.durChapterIndex = 2
+        book.durChapterPos = 0
+        val kosync = FakeProvider(pullResult = remote(2, 0, timestamp = 20))
+        val coordinator = coordinator(webDav = null, kosync = kosync, eligible = true)
+        var applied: BookProgress? = null
+        coordinator.syncOnOpen(
+            book,
+            plus = false,
+            onApplyRemote = { applied = it },
+            onPromptRemote = {},
+            onMessage = {},
+            localProgress = progress(1, 0),
+        )
+        assertEquals(2, applied?.durChapterIndex)
+    }
+
+    @Test
+    fun `push uses live local progress`() = runBlocking {
+        book.durChapterIndex = 2
+        book.durChapterPos = 0
+        val kosync = FakeProvider()
+        val coordinator = coordinator(webDav = null, kosync = kosync, eligible = true)
+        coordinator.push(book, localProgress = progress(5, 7))
+        assertEquals(5, kosync.lastPushed?.durChapterIndex)
+        assertEquals(7, kosync.lastPushed?.durChapterPos)
+    }
+
+    @Test
     fun `cloud ahead prompts even when kosync timestamp is newer`() = runBlocking {
         // 旧版本可能已经把 kosyncTime 推到了云端时间戳之后，位置更靠前时仍要提示。
         book.kosyncTime = 100

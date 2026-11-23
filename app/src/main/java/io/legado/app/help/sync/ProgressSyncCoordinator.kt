@@ -26,10 +26,12 @@ class ProgressSyncCoordinator(
         onMessage: (String) -> Unit,
         anchorText: String? = null,
         onUploaded: (() -> Unit)? = null,
+        localProgress: BookProgress? = null,
     ) {
+        val local = localProgress ?: BookProgress(book)
         if (kosync != null && isKosyncEligible(book)) {
             try {
-                syncKosync(book, plus, onApplyRemote, onPromptRemote, onMessage, anchorText, onUploaded)
+                syncKosync(book, local, plus, onApplyRemote, onPromptRemote, onMessage, anchorText, onUploaded)
                 return
             } catch (e: CancellationException) {
                 throw e
@@ -42,13 +44,13 @@ class ProgressSyncCoordinator(
                     }
                 )
                 if (webDav != null) {
-                    syncWebDav(book, plus, onApplyRemote, onPromptRemote, onMessage, onUploaded)
+                    syncWebDav(book, local, plus, onApplyRemote, onPromptRemote, onMessage, onUploaded)
                 }
                 return
             }
         }
         if (webDav != null) {
-            syncWebDav(book, plus, onApplyRemote, onPromptRemote, onMessage, onUploaded)
+            syncWebDav(book, local, plus, onApplyRemote, onPromptRemote, onMessage, onUploaded)
         }
     }
 
@@ -56,8 +58,16 @@ class ProgressSyncCoordinator(
         book: Book,
         onMessage: (String) -> Unit = {},
         anchorText: String? = null,
+        localProgress: BookProgress? = null,
     ) {
-        pushLocal(book, BookProgress(book), anchorText, onMessage, null, overrideCloud = false)
+        pushLocal(
+            book,
+            localProgress ?: BookProgress(book),
+            anchorText,
+            onMessage,
+            null,
+            overrideCloud = false,
+        )
     }
 
     suspend fun push(
@@ -66,10 +76,11 @@ class ProgressSyncCoordinator(
         onUploaded: (() -> Unit)? = null,
         anchorText: String? = null,
         overrideCloud: Boolean = false,
+        localProgress: BookProgress? = null,
     ) {
         pushLocal(
             book,
-            BookProgress(book),
+            localProgress ?: BookProgress(book),
             anchorText,
             onMessage,
             onUploaded,
@@ -102,6 +113,7 @@ class ProgressSyncCoordinator(
 
     private suspend fun syncKosync(
         book: Book,
+        local: BookProgress,
         plus: Boolean,
         onApplyRemote: ((BookProgress) -> Unit)?,
         onPromptRemote: ((BookProgress) -> Unit)?,
@@ -110,7 +122,6 @@ class ProgressSyncCoordinator(
         onUploaded: (() -> Unit)?,
     ) {
         val kosync = kosync ?: return
-        val local = BookProgress(book)
         val remote = kosync.pull(book)
         if (remote == null || remote.bookProgress == null) {
             pushLocal(book, local, anchorText, onMessage, onUploaded, overrideCloud = false)
@@ -122,6 +133,8 @@ class ProgressSyncCoordinator(
                 book.kosyncTime = remote.timestamp
                 saveBook(book)
             }
+            // 手动同步（带上传回调）且位置相同：给出反馈，避免只剩「正在同步」提示。
+            if (onUploaded != null) onMessage("已是最新进度")
             return
         }
         if (PositionEquality.remoteIsAhead(local, localKey, remote)) {
@@ -146,6 +159,7 @@ class ProgressSyncCoordinator(
 
     private suspend fun syncWebDav(
         book: Book,
+        local: BookProgress,
         plus: Boolean,
         onApplyRemote: ((BookProgress) -> Unit)?,
         onPromptRemote: ((BookProgress) -> Unit)?,
@@ -153,7 +167,6 @@ class ProgressSyncCoordinator(
         onUploaded: (() -> Unit)?,
     ) {
         val webDav = webDav ?: return
-        val local = BookProgress(book)
         val remote = try {
             webDav.pull(book)
         } catch (e: CancellationException) {

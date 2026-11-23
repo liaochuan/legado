@@ -310,6 +310,7 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 onPromptRemote = { progress -> alertSync?.invoke(progress) },
                 onMessage = { message -> AppLog.put(message) },
                 anchorText = ReadBook.currentPageAnchorText(),
+                localProgress = ReadBook.currentProgress(),
             )
         }.onError {
             AppLog.put("拉取阅读进度失败《${book.name}》\n${it.localizedMessage}", it)

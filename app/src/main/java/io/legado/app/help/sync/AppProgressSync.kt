@@ -36,6 +36,7 @@ object AppProgressSync {
         onMessage: (String) -> Unit,
         anchorText: String? = null,
         onUploaded: (() -> Unit)? = null,
+        localProgress: BookProgress? = null,
     ) {
         if (!AppConfig.syncBookProgress) return
         coordinator().syncOnOpen(
@@ -46,6 +47,7 @@ object AppProgressSync {
             onMessage = onMessage,
             anchorText = anchorText,
             onUploaded = onUploaded,
+            localProgress = localProgress,
         )
     }
 
@@ -53,9 +55,10 @@ object AppProgressSync {
         book: Book,
         onMessage: (String) -> Unit = {},
         anchorText: String? = null,
+        localProgress: BookProgress? = null,
     ) {
         if (!AppConfig.syncBookProgress) return
-        coordinator().syncOnClose(book, onMessage, anchorText)
+        coordinator().syncOnClose(book, onMessage, anchorText, localProgress)
     }
 
     suspend fun push(
@@ -64,9 +67,17 @@ object AppProgressSync {
         onUploaded: (() -> Unit)? = null,
         anchorText: String? = null,
         overrideCloud: Boolean = false,
+        localProgress: BookProgress? = null,
     ) {
         if (!AppConfig.syncBookProgress) return
-        coordinator().push(book, onMessage, onUploaded, anchorText, overrideCloud)
+        coordinator().push(
+            book = book,
+            onMessage = onMessage,
+            onUploaded = onUploaded,
+            anchorText = anchorText,
+            overrideCloud = overrideCloud,
+            localProgress = localProgress,
+        )
     }
 
     suspend fun syncAllOnStartup(books: List<Book>) {

@@ -3201,7 +3201,11 @@ class ReadBookActivity : BaseReadBookActivity(),
         backupJob = lifecycleScope.launch(IO) {
             delay(300000)
             ReadBook.book?.let {
-                AppProgressSync.push(it, anchorText = ReadBook.currentPageAnchorText())
+                AppProgressSync.push(
+                    it,
+                    anchorText = ReadBook.currentPageAnchorText(),
+                    localProgress = ReadBook.currentProgress(),
+                )
                 ensureActive()
                 it.update()
                 Backup.autoBack(this@ReadBookActivity)
