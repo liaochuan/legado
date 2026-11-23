@@ -2,11 +2,16 @@ package io.legado.app.help.sync
 
 import io.legado.app.data.entities.Book
 import io.legado.app.data.entities.BookProgress
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 class ProgressSyncCoordinatorTest {
 
@@ -45,6 +50,95 @@ class ProgressSyncCoordinatorTest {
         assertEquals(20L, book.kosyncTime)
         assertEquals(1, webDav.pushCalls)
         assertEquals(0, webDav.pullCalls)
+    }
+
+    @Test
+    fun `cloud ahead prompts even when kosync timestamp is newer`() = runBlocking {
+        // 旧版本可能已经把 kosyncTime 推到了云端时间戳之后，位置更靠前时仍要提示。
+        book.kosyncTime = 100
+        book.durChapterIndex = 1
+        book.durChapterPos = 0
+        val kosync = FakeProvider(pullResult = remote(3, 0, timestamp = 50))
+        val webDav = FakeProvider()
+        val coordinator = coordinator(webDav = webDav, kosync = kosync, eligible = true)
+        var applied: BookProgress? = null
+        coordinator.syncOnOpen(
+            book,
+            plus = false,
+            onApplyRemote = { applied = it },
+            onPromptRemote = {},
+            onMessage = {},
+        )
+        assertEquals(3, applied?.durChapterIndex)
+        assertEquals(0, kosync.pushCalls)
+        assertEquals(100L, book.kosyncTime)
+    }
+
+    @Test
+    fun `remote ahead callbacks run on ui context`() = runBlocking {
+        val executor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "legado-ui-test")
+        }
+        val uiDispatcher = executor.asCoroutineDispatcher()
+        try {
+            book.kosyncTime = 10
+            val kosync = FakeProvider(pullResult = remote(2, 0, timestamp = 20))
+            val coordinator = coordinator(
+                webDav = FakeProvider(),
+                kosync = kosync,
+                eligible = true,
+                uiContext = uiDispatcher,
+            )
+            val applyThread = AtomicReference<String>()
+            coordinator.syncOnOpen(
+                book,
+                plus = false,
+                onApplyRemote = { applyThread.set(Thread.currentThread().name) },
+                onPromptRemote = {},
+                onMessage = {},
+            )
+            assertEquals("legado-ui-test", applyThread.get()?.substringBefore(' '))
+
+            book.kosyncTime = 10
+            book.durChapterIndex = 3
+            val promptCoordinator = coordinator(
+                webDav = FakeProvider(),
+                kosync = FakeProvider(pullResult = remote(1, 0, timestamp = 20)),
+                eligible = true,
+                uiContext = uiDispatcher,
+            )
+            val promptThread = AtomicReference<String>()
+            promptCoordinator.syncOnOpen(
+                book,
+                plus = true,
+                onApplyRemote = {},
+                onPromptRemote = { promptThread.set(Thread.currentThread().name) },
+                onMessage = {},
+            )
+            assertEquals("legado-ui-test", promptThread.get()?.substringBefore(' '))
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `webdav push failure after applying remote keeps kosync result`() = runBlocking {
+        book.kosyncTime = 10
+        val kosync = FakeProvider(pullResult = remote(2, 0, timestamp = 20))
+        val webDav = FakeProvider(pushError = IllegalStateException("webdav down"))
+        val coordinator = coordinator(webDav = webDav, kosync = kosync, eligible = true)
+        val messages = mutableListOf<String>()
+        var applied: BookProgress? = null
+        coordinator.syncOnOpen(
+            book,
+            plus = false,
+            onApplyRemote = { applied = it },
+            onPromptRemote = {},
+            onMessage = { messages.add(it) },
+        )
+        assertEquals(2, applied?.durChapterIndex)
+        assertEquals(20L, book.kosyncTime)
+        assertEquals(listOf("WebDAV 上传失败"), messages)
     }
 
     @Test
@@ -158,6 +252,25 @@ class ProgressSyncCoordinatorTest {
     }
 
     @Test
+    fun `push passes override flag to kosync`() = runBlocking {
+        val kosync = FakeProvider()
+        val coordinator = coordinator(webDav = null, kosync = kosync, eligible = true)
+        coordinator.push(book, overrideCloud = true)
+        assertTrue(kosync.lastOverrideCloud)
+    }
+
+    @Test
+    fun `skipped kosync push does not report upload success`() = runBlocking {
+        val kosync = FakeProvider(pushResult = null)
+        val coordinator = coordinator(webDav = null, kosync = kosync, eligible = true)
+        var uploaded = 0
+        coordinator.push(book, onUploaded = { uploaded++ })
+        assertEquals(1, kosync.pushCalls)
+        assertEquals(0, uploaded)
+        assertEquals(0L, book.kosyncTime)
+    }
+
+    @Test
     fun `remote newer but behind without callbacks uploads local`() = runBlocking {
         book.kosyncTime = 10
         book.durChapterIndex = 3
@@ -193,6 +306,21 @@ class ProgressSyncCoordinatorTest {
     }
 
     @Test
+    fun `remote ahead is decided by position not timestamp`() {
+        val local = progress(1, 0)
+        assertTrue(PositionEquality.remoteIsAhead(local, null, RemoteProgress(progress(3, 0), 0, 0.9)))
+        assertTrue(
+            PositionEquality.remoteIsAhead(
+                progress(2, 0),
+                "txt:1",
+                RemoteProgress(progress(2, 500), 0, 0.9, paragraphKey = "txt:2"),
+            )
+        )
+        assertFalse(PositionEquality.remoteIsAhead(local, null, RemoteProgress(progress(1, 0), 999, 0.1)))
+        assertFalse(PositionEquality.remoteIsAhead(progress(3, 0), null, RemoteProgress(progress(1, 0), 999, 0.1)))
+    }
+
+    @Test
     fun `capabilities cache is invalidated`() {
         KosyncCapabilities.clear()
         assertFalse(KosyncCapabilities.isSupported("http://a", "k"))
@@ -206,12 +334,14 @@ class ProgressSyncCoordinatorTest {
         webDav: FakeProvider?,
         kosync: FakeProvider?,
         eligible: Boolean,
+        uiContext: CoroutineContext = EmptyCoroutineContext,
     ): ProgressSyncCoordinator {
         return ProgressSyncCoordinator(
             webDav = webDav,
             kosync = kosync,
             isKosyncEligible = { eligible },
             saveBook = {},
+            uiContext = uiContext,
         )
     }
 
@@ -237,10 +367,13 @@ class ProgressSyncCoordinatorTest {
     private class FakeProvider(
         var pullResult: RemoteProgress? = null,
         var pullError: Exception? = null,
+        var pushError: Exception? = null,
+        var pushResult: Long? = 100L,
     ) : ProgressSyncProvider {
         var pullCalls = 0
         var pushCalls = 0
         var lastPushed: BookProgress? = null
+        var lastOverrideCloud = false
 
         override suspend fun pull(book: Book): RemoteProgress? {
             pullCalls++
@@ -248,10 +381,17 @@ class ProgressSyncCoordinatorTest {
             return pullResult
         }
 
-        override suspend fun push(book: Book, progress: BookProgress, anchorText: String?): Long? {
+        override suspend fun push(
+            book: Book,
+            progress: BookProgress,
+            anchorText: String?,
+            overrideCloud: Boolean,
+        ): Long? {
             pushCalls++
+            lastOverrideCloud = overrideCloud
+            pushError?.let { throw it }
             lastPushed = progress
-            return 100L
+            return pushResult
         }
     }
 }

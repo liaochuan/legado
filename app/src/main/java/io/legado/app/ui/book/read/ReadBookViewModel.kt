@@ -298,9 +298,13 @@ class ReadBookViewModel(application: Application) : BaseViewModel(application) {
                 plus = true,
                 onApplyRemote = { progress ->
                     if (progress.durChapterIndex < book.simulatedTotalChapterNum()) {
-                        ReadBook.setProgress(progress)
-                        AppLog.put("自动同步阅读进度成功《${book.name}》 ${progress.durChapterTitle}")
-                        context.toastOnUi("已同步最新阅读进度")
+                        val callBack = ReadBook.callBack
+                        if (callBack != null) {
+                            // 云端进度更靠前时先询问，避免自动跳转覆盖当前阅读位置
+                            callBack.sureNewProgress(progress)
+                        } else {
+                            ReadBook.setProgress(progress)
+                        }
                     }
                 },
                 onPromptRemote = { progress -> alertSync?.invoke(progress) },

@@ -19,6 +19,7 @@ class WebDavProgressProvider : ProgressSyncProvider {
         book: Book,
         progress: BookProgress,
         anchorText: String?,
+        overrideCloud: Boolean,
     ): Long? {
         AppWebDav.uploadBookProgressOrThrow(progress)
         book.syncTime = System.currentTimeMillis()

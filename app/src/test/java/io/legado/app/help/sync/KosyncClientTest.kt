@@ -18,12 +18,14 @@ class KosyncClientTest {
     private var getCode = 200
     private var putCode = 200
     private var listCode = 200
+    private var extendedPutCode = 200
     private var putResponse = """{"document":"doc","timestamp":123}"""
     private var getResponse =
         """{"document":"doc","progress":"/body/DocFragment[1]/body/p[2]","percentage":0.5,"timestamp":100}"""
     private var lastAuthUser: String? = null
     private var lastAuthKey: String? = null
     private var lastPutBody: String? = null
+    private var lastExtendedPutBody: String? = null
     private var lastDocumentInfoPath: String? = null
     private var lastDocumentInfoBody: String? = null
     private val listPages = mutableListOf<String>()
@@ -48,8 +50,11 @@ class KosyncClientTest {
                 else -> TestHttpServer.Response(405, "{}")
             }
         }
-        server.route("/api/v1/progress") {
-            if (listCode != 200) {
+        server.route("/api/v1/progress") { request ->
+            if (request.method == "PUT") {
+                lastExtendedPutBody = request.body
+                TestHttpServer.Response(extendedPutCode, """{"document":"doc","timestamp":321}""")
+            } else if (listCode != 200) {
                 TestHttpServer.Response(listCode, "{}")
             } else {
                 val body = listPages.getOrNull(listIndex) ?: """{"items":[],"next":null}"""
@@ -136,6 +141,18 @@ class KosyncClientTest {
         assertTrue(body.contains("\"book.epub\""))
         assertTrue(body.contains("\"书名\""))
         assertTrue(body.contains("\"作者\""))
+    }
+
+    @Test
+    fun `putProgressExtended uses extended endpoint`() = runBlocking {
+        assertEquals(
+            321L,
+            client.putProgressExtended("doc", "/body/DocFragment[1]/body/p[9]", 0.4, "Legado", "device"),
+        )
+        val body = requireNotNull(lastExtendedPutBody)
+        assertTrue(body.contains("\"document\""))
+        assertTrue(body.contains("\"device_id\""))
+        assertTrue(body.contains("0.4"))
     }
 
     @Test

@@ -40,27 +40,75 @@ class KosyncProgressProvider(
         book: Book,
         progress: BookProgress,
         anchorText: String?,
+        overrideCloud: Boolean,
     ): Long? {
         val document = documentId(book) ?: throw KosyncException("无法计算文档 ID")
         val mapper = mapperFor(book) ?: throw KosyncException("不支持的书类型")
         val remote = mapper.toRemote(progress, anchorText)
             ?: throw KosyncException("无法生成 XPointer")
-        val timestamp = client.putProgress(
-            document = document,
-            progress = remote.progress,
-            percentage = remote.percentage,
-            device = deviceName,
-            deviceId = deviceId,
-            metadata = KosyncMetadata(
-                filename = book.originName.takeIf { it.isNotBlank() }?.take(512),
-                title = book.name.takeIf { it.isNotBlank() }?.take(512),
-                authors = book.author.takeIf { it.isNotBlank() }?.take(512),
-            ),
+        val metadata = KosyncMetadata(
+            filename = book.originName.takeIf { it.isNotBlank() }?.take(512),
+            title = book.name.takeIf { it.isNotBlank() }?.take(512),
+            authors = book.author.takeIf { it.isNotBlank() }?.take(512),
         )
+        val cloud = runCatching { pull(book) }.getOrNull()
+        if (!overrideCloud && cloud != null) {
+            val localKey = paragraphKey(book, progress)
+            if (PositionEquality.remoteIsAhead(progress, localKey, cloud)) {
+                // 云端位置更靠前，普通上传不后退。
+                return null
+            }
+        }
+        // 不同客户端的百分比模型不同：位置是前进的，但百分比可能低于云端，
+        // 服务端会按百分比静默丢弃，这种情况改走显式接口。
+        val percentageWouldBeDropped = cloud?.percentage?.let { remote.percentage < it } == true
+        val timestamp = if (overrideCloud || percentageWouldBeDropped) {
+            putProgressExplicit(document, remote, metadata)
+        } else {
+            client.putProgress(
+                document = document,
+                progress = remote.progress,
+                percentage = remote.percentage,
+                device = deviceName,
+                deviceId = deviceId,
+                metadata = metadata,
+            )
+        }
         KosyncCoverUrlProvider.coverUrl(book)?.let { coverUrl ->
             runCatching { client.putDocumentInfo(document, coverUrl) }
         }
         return timestamp
+    }
+
+    private suspend fun putProgressExplicit(
+        document: String,
+        remote: RemotePosition,
+        metadata: KosyncMetadata,
+    ): Long? {
+        return try {
+            client.putProgressExtended(
+                document = document,
+                progress = remote.progress,
+                percentage = remote.percentage,
+                device = deviceName,
+                deviceId = deviceId,
+                metadata = metadata,
+            )
+        } catch (e: KosyncException) {
+            if (e.statusCode == 404) {
+                // 官方 kosync 没有扩展接口，但它本身允许后退。
+                client.putProgress(
+                    document = document,
+                    progress = remote.progress,
+                    percentage = remote.percentage,
+                    device = deviceName,
+                    deviceId = deviceId,
+                    metadata = metadata,
+                )
+            } else {
+                throw e
+            }
+        }
     }
 
     override suspend fun pullAll(books: List<Book>): Map<String, RemoteProgress> {

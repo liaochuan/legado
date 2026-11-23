@@ -816,7 +816,11 @@ object ReadBook : CoroutineScope by MainScope() {
         nextTextChapter?.clearSearchResult()
     }
 
-    fun uploadProgress(toast: Boolean = false, successAction: (() -> Unit)? = null) {
+    fun uploadProgress(
+        toast: Boolean = false,
+        successAction: (() -> Unit)? = null,
+        overrideCloud: Boolean = false,
+    ) {
         book?.let {
             if (toast) {
                 appCtx.toastOnUi(R.string.sync_progress_in_progress)
@@ -834,6 +838,7 @@ object ReadBook : CoroutineScope by MainScope() {
                     },
                     successAction,
                     currentPageAnchorText(),
+                    overrideCloud,
                 )
                 ensureActive()
                 it.update()

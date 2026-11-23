@@ -10,6 +10,7 @@ import io.legado.app.help.book.isLocal
 import io.legado.app.help.book.isLocalTxt
 import io.legado.app.help.config.AppConfig
 import io.legado.app.help.http.okHttpClient
+import kotlinx.coroutines.Dispatchers
 import java.util.concurrent.TimeUnit
 
 object AppProgressSync {
@@ -62,9 +63,10 @@ object AppProgressSync {
         onMessage: (String) -> Unit = {},
         onUploaded: (() -> Unit)? = null,
         anchorText: String? = null,
+        overrideCloud: Boolean = false,
     ) {
         if (!AppConfig.syncBookProgress) return
-        coordinator().push(book, onMessage, onUploaded, anchorText)
+        coordinator().push(book, onMessage, onUploaded, anchorText, overrideCloud)
     }
 
     suspend fun syncAllOnStartup(books: List<Book>) {
@@ -121,6 +123,7 @@ object AppProgressSync {
             webDav = webDav,
             kosync = kosync,
             isKosyncEligible = ::isKosyncEligible,
+            uiContext = Dispatchers.Main,
         )
     }
 }

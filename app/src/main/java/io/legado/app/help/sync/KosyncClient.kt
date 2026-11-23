@@ -60,18 +60,7 @@ class KosyncClient(
         deviceId: String,
         metadata: KosyncMetadata? = null,
     ): Long? {
-        val payload = buildMap<String, Any> {
-            put("document", document)
-            put("progress", progress)
-            put("percentage", percentage)
-            put("device", device)
-            put("device_id", deviceId)
-            if (metadata != null) {
-                put("metadata", metadata)
-            }
-        }
-        val body = GSON.toJson(payload)
-            .toRequestBody("application/json; charset=UTF-8".toMediaType())
+        val body = progressBody(document, progress, percentage, device, deviceId, metadata)
         val response = execute(request("/syncs/progress").put(body).build())
         response.use {
             if (it.code == 401) {
@@ -80,12 +69,62 @@ class KosyncClient(
             if (!it.isSuccessful) {
                 throw KosyncException("KOSync put progress failed: HTTP ${it.code}", it.code)
             }
-            val text = it.body.string()
-            val timestamp = runCatching {
-                GSON.fromJson(text, KosyncProgressDto::class.java)?.timestamp
-            }.getOrNull()
-            return timestamp ?: getProgress(document)?.timestamp
+            return responseTimestamp(it.body.string(), document)
         }
+    }
+
+    /**
+     * crosspoint-sync 的 PUT /syncs/progress 只接受前进，后退会被静默丢弃。
+     * 覆盖云端进度（允许后退）时必须走 PUT /api/v1/progress。
+     * 官方 kosync 没有该接口，返回 404 时由调用方回退。
+     */
+    suspend fun putProgressExtended(
+        document: String,
+        progress: String,
+        percentage: Double,
+        device: String,
+        deviceId: String,
+        metadata: KosyncMetadata? = null,
+    ): Long? {
+        val body = progressBody(document, progress, percentage, device, deviceId, metadata)
+        val response = execute(request("/api/v1/progress").put(body).build())
+        response.use {
+            if (it.code == 401) {
+                throw KosyncException("KOSync unauthorized", 401)
+            }
+            if (it.code == 404) {
+                throw KosyncException("KOSync extended API is not supported", 404)
+            }
+            if (!it.isSuccessful) {
+                throw KosyncException("KOSync put progress failed: HTTP ${it.code}", it.code)
+            }
+            return responseTimestamp(it.body.string(), document)
+        }
+    }
+
+    private fun progressBody(
+        document: String,
+        progress: String,
+        percentage: Double,
+        device: String,
+        deviceId: String,
+        metadata: KosyncMetadata?,
+    ) = GSON.toJson(buildMap<String, Any> {
+        put("document", document)
+        put("progress", progress)
+        put("percentage", percentage)
+        put("device", device)
+        put("device_id", deviceId)
+        if (metadata != null) {
+            put("metadata", metadata)
+        }
+    }).toRequestBody("application/json; charset=UTF-8".toMediaType())
+
+    private suspend fun responseTimestamp(text: String, document: String): Long? {
+        val timestamp = runCatching {
+            GSON.fromJson(text, KosyncProgressDto::class.java)?.timestamp
+        }.getOrNull()
+        return timestamp ?: getProgress(document)?.timestamp
     }
 
     suspend fun listProgress(limit: Int = 500): List<KosyncListItem> {

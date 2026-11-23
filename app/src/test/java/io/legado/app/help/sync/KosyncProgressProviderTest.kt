@@ -6,6 +6,7 @@ import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -15,8 +16,14 @@ class KosyncProgressProviderTest {
     private lateinit var server: TestHttpServer
     private lateinit var provider: KosyncProgressProvider
     private var lastPutBody: String? = null
+    private var lastPutPath: String? = null
     private var lastDocumentInfoPath: String? = null
     private var lastDocumentInfoBody: String? = null
+    private var cloudPercentage = 0.5
+    private var localPercentage = 0.5
+    private var cloudChapter = 2
+    private var cloudPos = 3
+    private var extendedPutCode = 200
     private val book = Book(
         bookUrl = "book",
         origin = io.legado.app.constant.BookType.localTag,
@@ -34,21 +41,30 @@ class KosyncProgressProviderTest {
             when (request.method) {
                 "GET" -> TestHttpServer.Response(
                     200,
-                    """{"document":"doc","progress":"/body/DocFragment[1]/body/p[1]","percentage":0.5,"timestamp":10}""",
+                    """{"document":"doc","progress":"/body/DocFragment[1]/body/p[9]","percentage":$cloudPercentage,"timestamp":10}""",
                 )
 
                 "PUT" -> {
                     lastPutBody = request.body
+                    lastPutPath = request.path
                     TestHttpServer.Response(200, """{"document":"doc","timestamp":20}""")
                 }
                 else -> TestHttpServer.Response(405, "{}")
             }
         }
-        server.route("/api/v1/progress") {
-            TestHttpServer.Response(
-                200,
-                """{"items":[{"document":"doc","progress":"/body/DocFragment[1]/body/p[1]","percentage":0.5,"timestamp":10}],"next":null}""",
-            )
+        server.route("/api/v1/progress") { request ->
+            when (request.method) {
+                "PUT" -> {
+                    lastPutBody = request.body
+                    lastPutPath = request.path
+                    TestHttpServer.Response(extendedPutCode, """{"document":"doc","timestamp":30}""")
+                }
+
+                else -> TestHttpServer.Response(
+                    200,
+                    """{"items":[{"document":"doc","progress":"/body/DocFragment[1]/body/p[1]","percentage":0.5,"timestamp":10}],"next":null}""",
+                )
+            }
         }
         server.route("/api/v1/documents") { request ->
             lastDocumentInfoPath = request.path
@@ -64,7 +80,7 @@ class KosyncProgressProviderTest {
             ),
             deviceName = "Legado",
             deviceId = "device",
-            mapperFactory = { FakeMapper() },
+            mapperFactory = { FakeMapper(localPercentage, cloudChapter, cloudPos) },
             documentId = { "doc" },
         )
     }
@@ -87,11 +103,48 @@ class KosyncProgressProviderTest {
     fun `push maps local progress and returns timestamp`() = runBlocking {
         val timestamp = provider.push(book, progress(2, 3))
         assertEquals(20L, timestamp)
+        assertEquals("/syncs/progress", lastPutPath)
         val body = requireNotNull(lastPutBody)
         assertTrue(body.contains("\"metadata\""))
         assertTrue(body.contains("\"book.txt\""))
         assertTrue(body.contains("\"book\""))
         assertTrue(body.contains("\"author\""))
+    }
+
+    @Test
+    fun `push skips when cloud progress is ahead`() = runBlocking {
+        cloudChapter = 2
+        cloudPos = 3
+        assertNull(provider.push(book, progress(1, 0)))
+        assertNull(lastPutPath)
+    }
+
+    @Test
+    fun `push uploads local ahead even when percentage is lower than cloud`() = runBlocking {
+        cloudChapter = 1
+        cloudPos = 0
+        cloudPercentage = 0.5
+        localPercentage = 0.2
+        val timestamp = provider.push(book, progress(3, 0))
+        assertEquals(30L, timestamp)
+        assertEquals("/api/v1/progress", lastPutPath)
+    }
+
+    @Test
+    fun `override pushes through extended api`() = runBlocking {
+        cloudPercentage = 0.9
+        val timestamp = provider.push(book, progress(1, 0), overrideCloud = true)
+        assertEquals(30L, timestamp)
+        assertEquals("/api/v1/progress", lastPutPath)
+    }
+
+    @Test
+    fun `override falls back to legacy put without extended api`() = runBlocking {
+        cloudPercentage = 0.9
+        extendedPutCode = 404
+        val timestamp = provider.push(book, progress(1, 0), overrideCloud = true)
+        assertEquals(20L, timestamp)
+        assertEquals("/syncs/progress", lastPutPath)
     }
 
     @Test
@@ -122,19 +175,24 @@ class KosyncProgressProviderTest {
         durChapterTitle = null,
     )
 
-    private class FakeMapper : PositionMapper {
+    private class FakeMapper(
+        private val localPercentage: Double = 0.5,
+        private val cloudChapter: Int = 2,
+        private val cloudPos: Int = 3,
+    ) : PositionMapper {
         override fun toRemote(progress: BookProgress, anchorText: String?): RemotePosition {
-            return RemotePosition("/body/DocFragment[1]/body/p[1]", 0.5, "txt:1")
+            return RemotePosition("/body/DocFragment[1]/body/p[9]", localPercentage, "txt:9")
         }
 
         override fun fromRemote(xpointer: String, percentage: Double): BookProgress {
-            return BookProgress("book", "author", 2, 3, 0, null)
+            return BookProgress("book", "author", cloudChapter, cloudPos, 0, null)
         }
 
         override fun fromPercentage(percentage: Double): BookProgress {
             return BookProgress("book", "author", 1, 0, 0, null)
         }
 
-        override fun paragraphKey(progress: BookProgress): String = "txt:1"
+        override fun paragraphKey(progress: BookProgress): String =
+            "txt:${progress.durChapterIndex}:${progress.durChapterPos}"
     }
 }

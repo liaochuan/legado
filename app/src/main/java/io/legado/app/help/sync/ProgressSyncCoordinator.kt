@@ -6,12 +6,16 @@ import io.legado.app.help.book.update
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 
 class ProgressSyncCoordinator(
     private val webDav: ProgressSyncProvider?,
     private val kosync: ProgressSyncProvider?,
     private val isKosyncEligible: (Book) -> Boolean,
     private val saveBook: (Book) -> Unit = { it.update() },
+    private val uiContext: CoroutineContext = EmptyCoroutineContext,
 ) {
 
     suspend fun syncOnOpen(
@@ -53,7 +57,7 @@ class ProgressSyncCoordinator(
         onMessage: (String) -> Unit = {},
         anchorText: String? = null,
     ) {
-        pushLocal(book, BookProgress(book), anchorText, onMessage, null)
+        pushLocal(book, BookProgress(book), anchorText, onMessage, null, overrideCloud = false)
     }
 
     suspend fun push(
@@ -61,8 +65,16 @@ class ProgressSyncCoordinator(
         onMessage: (String) -> Unit = {},
         onUploaded: (() -> Unit)? = null,
         anchorText: String? = null,
+        overrideCloud: Boolean = false,
     ) {
-        pushLocal(book, BookProgress(book), anchorText, onMessage, onUploaded)
+        pushLocal(
+            book,
+            BookProgress(book),
+            anchorText,
+            onMessage,
+            onUploaded,
+            overrideCloud = overrideCloud,
+        )
     }
 
     suspend fun syncAllOnStartup(books: List<Book>) {
@@ -101,33 +113,34 @@ class ProgressSyncCoordinator(
         val local = BookProgress(book)
         val remote = kosync.pull(book)
         if (remote == null || remote.bookProgress == null) {
-            pushLocal(book, local, anchorText, onMessage, onUploaded)
+            pushLocal(book, local, anchorText, onMessage, onUploaded, overrideCloud = false)
             return
         }
         val localKey = kosync.paragraphKey(book, local)
-        if (remote.timestamp > book.kosyncTime) {
-            if (PositionEquality.same(local, localKey, remote)) {
+        if (PositionEquality.same(local, localKey, remote)) {
+            if (remote.timestamp > book.kosyncTime) {
                 book.kosyncTime = remote.timestamp
                 saveBook(book)
-            } else {
-                val shouldPrompt = plus &&
-                        PositionEquality.remoteIsBehind(local, localKey, remote) &&
-                        onPromptRemote != null
-                if (shouldPrompt) {
-                    onPromptRemote.invoke(remote.bookProgress)
-                } else if (onApplyRemote != null) {
-                    onApplyRemote.invoke(remote.bookProgress)
-                    webDav?.push(book, remote.bookProgress, null)
-                    book.kosyncTime = remote.timestamp
-                    saveBook(book)
-                } else if (PositionEquality.remoteIsBehind(local, localKey, remote)) {
-                    pushLocal(book, local, anchorText, onMessage, onUploaded)
-                }
             }
             return
         }
-        if (!PositionEquality.same(local, localKey, remote)) {
-            pushLocal(book, local, anchorText, onMessage, onUploaded)
+        if (PositionEquality.remoteIsAhead(local, localKey, remote)) {
+            // 云端位置更靠前：先让调用方提示是否跳转，确认后才应用。
+            if (onApplyRemote != null) {
+                notifyProgress(onApplyRemote, remote.bookProgress)
+                pushWebDavOutcome(book, remote.bookProgress).error?.let(onMessage)
+                book.kosyncTime = maxOf(book.kosyncTime, remote.timestamp)
+                saveBook(book)
+            }
+            return
+        }
+        val shouldPrompt = plus &&
+                PositionEquality.remoteIsBehind(local, localKey, remote) &&
+                onPromptRemote != null
+        if (shouldPrompt) {
+            notifyProgress(onPromptRemote, remote.bookProgress)
+        } else {
+            pushLocal(book, local, anchorText, onMessage, onUploaded, overrideCloud = false)
         }
     }
 
@@ -158,17 +171,28 @@ class ProgressSyncCoordinator(
                 (progress.durChapterIndex == local.durChapterIndex &&
                         progress.durChapterPos > local.durChapterPos)
         if (remoteAhead) {
-            onApplyRemote?.invoke(progress)
+            notifyProgress(onApplyRemote, progress)
         } else if (progress.durChapterIndex < local.durChapterIndex ||
             (progress.durChapterIndex == local.durChapterIndex &&
                     progress.durChapterPos < local.durChapterPos)
         ) {
             if (plus && onPromptRemote != null) {
-                onPromptRemote.invoke(progress)
+                notifyProgress(onPromptRemote, progress)
             } else {
                 if (pushWebDav(book, local, onMessage)) onUploaded?.invoke()
             }
         }
+    }
+
+    /**
+     * 应用/确认云端进度属于界面操作（弹窗、跳转、Toast），必须回到主线程执行。
+     */
+    private suspend fun notifyProgress(
+        callback: ((BookProgress) -> Unit)?,
+        progress: BookProgress,
+    ) {
+        if (callback == null) return
+        withContext(uiContext) { callback(progress) }
     }
 
     private suspend fun pushLocal(
@@ -177,11 +201,12 @@ class ProgressSyncCoordinator(
         anchorText: String?,
         onMessage: (String) -> Unit,
         onUploaded: (() -> Unit)?,
+        overrideCloud: Boolean,
     ) {
         val outcomes = coroutineScope {
             val jobs = ArrayList<kotlinx.coroutines.Deferred<PushOutcome>>()
             if (kosync != null) {
-                jobs.add(async { pushKosyncOutcome(book, local, anchorText) })
+                jobs.add(async { pushKosyncOutcome(book, local, anchorText, overrideCloud) })
             }
             if (webDav != null) {
                 jobs.add(async { pushWebDavOutcome(book, local) })
@@ -201,15 +226,17 @@ class ProgressSyncCoordinator(
         book: Book,
         progress: BookProgress,
         anchorText: String?,
+        overrideCloud: Boolean,
     ): PushOutcome {
         val kosync = kosync ?: return PushOutcome(false)
         return try {
-            val timestamp = kosync.push(book, progress, anchorText)
+            val timestamp = kosync.push(book, progress, anchorText, overrideCloud)
             if (timestamp != null) {
                 book.kosyncTime = timestamp
                 saveBook(book)
             }
-            PushOutcome(true)
+            // 云端更靠前时普通上传会被跳过，返回 null，不能报告上传成功。
+            PushOutcome(timestamp != null)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
