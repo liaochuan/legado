@@ -31,7 +31,7 @@ class ProgressSyncCoordinator(
         val local = localProgress ?: BookProgress(book)
         if (kosync != null && isKosyncEligible(book)) {
             try {
-                syncKosync(book, local, plus, onApplyRemote, onPromptRemote, onMessage, anchorText, onUploaded)
+                syncKosync(book, local, onApplyRemote, onMessage, anchorText, onUploaded)
                 return
             } catch (e: CancellationException) {
                 throw e
@@ -44,13 +44,13 @@ class ProgressSyncCoordinator(
                     }
                 )
                 if (webDav != null) {
-                    syncWebDav(book, local, plus, onApplyRemote, onPromptRemote, onMessage, onUploaded)
+                    syncWebDav(book, local, onApplyRemote, onMessage, onUploaded)
                 }
                 return
             }
         }
         if (webDav != null) {
-            syncWebDav(book, local, plus, onApplyRemote, onPromptRemote, onMessage, onUploaded)
+            syncWebDav(book, local, onApplyRemote, onMessage, onUploaded)
         }
     }
 
@@ -114,9 +114,7 @@ class ProgressSyncCoordinator(
     private suspend fun syncKosync(
         book: Book,
         local: BookProgress,
-        plus: Boolean,
         onApplyRemote: ((BookProgress) -> Unit)?,
-        onPromptRemote: ((BookProgress) -> Unit)?,
         onMessage: (String) -> Unit,
         anchorText: String?,
         onUploaded: (() -> Unit)?,
@@ -147,22 +145,14 @@ class ProgressSyncCoordinator(
             }
             return
         }
-        val shouldPrompt = plus &&
-                PositionEquality.remoteIsBehind(local, localKey, remote) &&
-                onPromptRemote != null
-        if (shouldPrompt) {
-            notifyProgress(onPromptRemote, remote.bookProgress)
-        } else {
-            pushLocal(book, local, anchorText, onMessage, onUploaded, overrideCloud = false)
-        }
+        // 本地进度更靠前（或无法比较）：直接上传，不再弹「云端更新」确认框。
+        pushLocal(book, local, anchorText, onMessage, onUploaded, overrideCloud = false)
     }
 
     private suspend fun syncWebDav(
         book: Book,
         local: BookProgress,
-        plus: Boolean,
         onApplyRemote: ((BookProgress) -> Unit)?,
-        onPromptRemote: ((BookProgress) -> Unit)?,
         onMessage: (String) -> Unit,
         onUploaded: (() -> Unit)?,
     ) {
@@ -189,11 +179,8 @@ class ProgressSyncCoordinator(
             (progress.durChapterIndex == local.durChapterIndex &&
                     progress.durChapterPos < local.durChapterPos)
         ) {
-            if (plus && onPromptRemote != null) {
-                notifyProgress(onPromptRemote, progress)
-            } else {
-                if (pushWebDav(book, local, onMessage)) onUploaded?.invoke()
-            }
+            // 本地更靠前时直接上传，不再弹「云端更新」确认框。
+            if (pushWebDav(book, local, onMessage)) onUploaded?.invoke()
         }
     }
 

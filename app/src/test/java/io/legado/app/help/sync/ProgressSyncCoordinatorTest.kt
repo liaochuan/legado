@@ -128,24 +128,6 @@ class ProgressSyncCoordinatorTest {
                 onMessage = {},
             )
             assertEquals("legado-ui-test", applyThread.get()?.substringBefore(' '))
-
-            book.kosyncTime = 10
-            book.durChapterIndex = 3
-            val promptCoordinator = coordinator(
-                webDav = FakeProvider(),
-                kosync = FakeProvider(pullResult = remote(1, 0, timestamp = 20)),
-                eligible = true,
-                uiContext = uiDispatcher,
-            )
-            val promptThread = AtomicReference<String>()
-            promptCoordinator.syncOnOpen(
-                book,
-                plus = true,
-                onApplyRemote = {},
-                onPromptRemote = { promptThread.set(Thread.currentThread().name) },
-                onMessage = {},
-            )
-            assertEquals("legado-ui-test", promptThread.get()?.substringBefore(' '))
         } finally {
             executor.shutdownNow()
         }
@@ -244,11 +226,12 @@ class ProgressSyncCoordinatorTest {
     }
 
     @Test
-    fun `plus mode prompts when remote is behind local`() = runBlocking {
+    fun `local ahead uploads instead of prompting`() = runBlocking {
         book.kosyncTime = 10
         book.durChapterIndex = 3
         val kosync = FakeProvider(pullResult = remote(1, 0, timestamp = 20))
-        val coordinator = coordinator(webDav = FakeProvider(), kosync = kosync, eligible = true)
+        val webDav = FakeProvider()
+        val coordinator = coordinator(webDav = webDav, kosync = kosync, eligible = true)
         var prompted: BookProgress? = null
         var applied: BookProgress? = null
         coordinator.syncOnOpen(
@@ -258,8 +241,27 @@ class ProgressSyncCoordinatorTest {
             onPromptRemote = { prompted = it },
             onMessage = {},
         )
-        assertEquals(1, prompted?.durChapterIndex)
+        assertEquals(null, prompted)
         assertEquals(null, applied)
+        assertEquals(1, kosync.pushCalls)
+        assertEquals(1, webDav.pushCalls)
+    }
+
+    @Test
+    fun `webdav local ahead uploads instead of prompting`() = runBlocking {
+        book.durChapterIndex = 3
+        val webDav = FakeProvider(pullResult = remote(1, 0, timestamp = 0))
+        val coordinator = coordinator(webDav = webDav, kosync = null, eligible = false)
+        var prompted: BookProgress? = null
+        coordinator.syncOnOpen(
+            book,
+            plus = true,
+            onApplyRemote = {},
+            onPromptRemote = { prompted = it },
+            onMessage = {},
+        )
+        assertEquals(null, prompted)
+        assertEquals(1, webDav.pushCalls)
     }
 
     @Test
