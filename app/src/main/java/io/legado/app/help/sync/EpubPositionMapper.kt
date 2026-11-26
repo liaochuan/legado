@@ -14,6 +14,9 @@ import kotlin.math.abs
 interface EpubSpineSource {
     fun hrefs(): List<String>
     fun body(href: String): Element?
+
+    /** spine 文档的原始字节数，用于按 crengine 的字节模型计算 percentage。 */
+    fun byteLength(href: String): Long
 }
 
 class EpubFileSpineSource(private val book: Book) : EpubSpineSource {
@@ -22,13 +25,16 @@ class EpubFileSpineSource(private val book: Book) : EpubSpineSource {
     override fun hrefs(): List<String> = epubFile.getSpineHrefs()
 
     override fun body(href: String): Element? = epubFile.getSpineBody(href)
+
+    override fun byteLength(href: String): Long = epubFile.getSpineByteLength(href)
 }
 
 /**
- * 把 Legado 的 EPUB 章节位置映射为 KOReader 的块级 XPointer。
+ * 把 Legado 的 EPUB 章节位置映射为 KOReader / CrossPoint 的块级 XPointer。
  *
- * 上传方向用当前页首行文本作为锚点，找到最近的块级元素；
- * 拉取方向解析 XPointer，失败时逐级回退到最深可解析元素。
+ * percentage 使用 crengine 的模型：spine 文档累计字节 / spine 总字节。
+ * XPointer 输出 crengine 风格（每级显式下标 + text()[1].offset），
+ * 章节开头固定锚定标题或第一个文本块。
  */
 class EpubPositionMapper(
     private val book: Book,
@@ -37,35 +43,52 @@ class EpubPositionMapper(
     private val chapterContent: (BookChapter) -> String? = { BookHelp.getContent(book, it) },
 ) : PositionMapper {
 
+    private val allChapters by lazy { chapters() }
+    private val hrefs by lazy { spine.hrefs() }
+    private val docBytes by lazy { hrefs.map { spine.byteLength(it) } }
+    private val cumulativeBytes by lazy {
+        val result = LongArray(docBytes.size + 1)
+        for (index in docBytes.indices) {
+            result[index + 1] = result[index] + docBytes[index]
+        }
+        result
+    }
+    private val totalBytes: Long by lazy { cumulativeBytes.lastOrNull() ?: 0L }
+    private val docPlainTextCache = HashMap<String, String>()
+    private val chapterPlainTextCache = HashMap<String, String>()
+
     override fun toRemote(progress: BookProgress, anchorText: String?): RemotePosition? {
-        val chapter = chapters().getOrNull(progress.durChapterIndex) ?: return null
+        val chapter = allChapters.getOrNull(progress.durChapterIndex) ?: return null
         return toRemote(chapter, progress.durChapterPos, anchorText)
     }
 
-    fun toRemote(
+    fun toRemote(chapter: BookChapter, chapterPos: Int, anchorText: String?): RemotePosition? {
+        val href = chapterHref(chapter)
+        val spineIndex = hrefs.indexOf(href)
+        if (spineIndex < 0) return null
+        val body = spine.body(href) ?: return null
+        val target = if (chapterPos <= 0) {
+            firstBlock(body)
+        } else {
+            findBlockByAnchors(body, chapter, chapterPos, anchorText)
+        } ?: return null
+        val path = pathFromBody(body, target) ?: return null
+        val pointer = buildPointer(spineIndex, path, target)
+        val percentage = percentageFor(chapter, chapterPos) ?: 0.0
+        val key = if (path.isEmpty()) "epub:$spineIndex:" else "epub:$spineIndex:/$path"
+        return RemotePosition(pointer, percentage, key)
+    }
+
+    private fun findBlockByAnchors(
+        body: Element,
         chapter: BookChapter,
         chapterPos: Int,
         anchorText: String?,
-    ): RemotePosition? {
-        val href = chapterHref(chapter)
-        val spineIndex = spine.hrefs().indexOf(href)
-        if (spineIndex < 0) return null
-        val body = spine.body(href) ?: return null
-        val anchors = anchorCandidates(chapter, chapterPos, anchorText)
-        if (anchors.isEmpty()) return null
-        var block: Element? = null
-        for (anchor in anchors) {
-            block = findBlock(body, anchor)
-            if (block != null) break
+    ): Element? {
+        for (anchor in anchorCandidates(chapter, chapterPos, anchorText)) {
+            findBlock(body, anchor)?.let { return it }
         }
-        val target = block ?: return null
-        val path = pathFromBody(body, target) ?: return null
-        val pointer = buildPointer(spineIndex, path)
-        val total = chapters().size.coerceAtLeast(1)
-        val percentage = ((chapter.index + chapterPos.coerceAtLeast(0) / 10000.0) / total)
-            .coerceIn(0.0, 1.0)
-        val key = if (path.isEmpty()) "epub:$spineIndex:" else "epub:$spineIndex:/$path"
-        return RemotePosition(pointer, percentage, key)
+        return null
     }
 
     private fun anchorCandidates(
@@ -76,9 +99,7 @@ class EpubPositionMapper(
         val result = LinkedHashSet<String>()
         normalize(anchorText.orEmpty()).take(ANCHOR_MAX_LENGTH)
             .takeIf { it.isNotEmpty() }?.let(result::add)
-        val content = chapterContent(chapter) ?: return result.toList()
-        val plain = Jsoup.parse(content).text()
-        if (plain.isEmpty()) return result.toList()
+        val plain = plainText(chapter) ?: return result.toList()
         val start = chapterPos.coerceIn(0, plain.length)
         for (delta in ANCHOR_OFFSETS) {
             val from = (start + delta).coerceIn(0, plain.length)
@@ -91,31 +112,32 @@ class EpubPositionMapper(
 
     override fun fromRemote(xpointer: String, percentage: Double): BookProgress? {
         val pointer = XPointerParser.parse(xpointer) ?: return fromPercentage(percentage)
-        val href = spine.hrefs().getOrNull((pointer.fragmentIndex ?: 1) - 1)
+        val href = hrefs.getOrNull((pointer.fragmentIndex ?: 1) - 1)
             ?: return fromPercentage(percentage)
         val body = spine.body(href) ?: return fromPercentage(percentage)
         val node = resolve(body, pointer) ?: return fromPercentage(percentage)
         val anchor = normalize(nodeText(node)).take(ANCHOR_MAX_LENGTH)
         if (anchor.isEmpty()) return fromPercentage(percentage)
-        val allChapters = chapters()
         val splitChapters = allChapters.filter { chapterHref(it) == href }
         if (splitChapters.isEmpty()) return fromPercentage(percentage)
         var best: BookProgress? = null
         var bestScore = Double.MAX_VALUE
+        var bestIndexScore = Double.MAX_VALUE
         for (chapter in splitChapters) {
-            val content = chapterContent(chapter) ?: continue
-            val plainText = Jsoup.parse(content).text()
-            if (plainText.isEmpty()) continue
+            val plain = plainText(chapter) ?: continue
             var searchFrom = 0
-            while (searchFrom < plainText.length) {
-                val position = plainText.indexOf(anchor, searchFrom)
+            while (searchFrom < plain.length) {
+                val position = plain.indexOf(anchor, searchFrom)
                 if (position < 0) break
-                val globalPercentage =
-                    (chapter.index + position.toDouble() / plainText.length) /
-                        allChapters.size.coerceAtLeast(1)
-                val score = abs(globalPercentage - percentage)
-                if (score < bestScore) {
+                val candidatePercentage = percentageFor(chapter, position) ?: break
+                val score = abs(candidatePercentage - percentage)
+                // 同一 href 被拆成多章、百分比相同时，用章节序号的粗估做兜底
+                val indexScore = abs(chapter.index - percentage * allChapters.size)
+                if (score < bestScore - 1e-9 ||
+                    (abs(score - bestScore) <= 1e-9 && indexScore < bestIndexScore)
+                ) {
                     bestScore = score
+                    bestIndexScore = indexScore
                     best = BookProgress(
                         name = book.name,
                         author = book.author,
@@ -132,12 +154,35 @@ class EpubPositionMapper(
     }
 
     override fun fromPercentage(percentage: Double): BookProgress? {
-        val list = chapters()
-        if (list.isEmpty()) return null
-        val index = (percentage.coerceIn(0.0, 1.0) * list.size)
-            .toInt()
-            .coerceIn(0, list.lastIndex)
-        val chapter = list[index]
+        if (allChapters.isEmpty()) return null
+        if (totalBytes <= 0) {
+            val index = (percentage.coerceIn(0.0, 1.0) * allChapters.size)
+                .toInt()
+                .coerceIn(0, allChapters.lastIndex)
+            val chapter = allChapters[index]
+            return BookProgress(
+                name = book.name,
+                author = book.author,
+                durChapterIndex = chapter.index,
+                durChapterPos = 0,
+                durChapterTime = System.currentTimeMillis(),
+                durChapterTitle = chapter.title,
+            )
+        }
+        val target = percentage.coerceIn(0.0, 1.0) * totalBytes
+        val docIndex = cumulativeBytes.indexOfLast { it <= target }
+            .coerceIn(0, hrefs.lastIndex)
+        val href = hrefs.getOrNull(docIndex) ?: return null
+        val parts = allChapters.filter { chapterHref(it) == href }
+        if (parts.isEmpty()) return null
+        val docStart = cumulativeBytes[docIndex]
+        val docSize = (docBytes.getOrNull(docIndex) ?: 0L).coerceAtLeast(1L)
+        val fraction = ((target - docStart) / docSize).coerceIn(0.0, 1.0)
+        val docLength = docText(href).length.coerceAtLeast(1)
+        val charPosition = (fraction * docLength).toInt().coerceIn(0, docLength)
+        val chapter = parts.lastOrNull { chapterOffsetInDoc(it, href, docLength) <= charPosition }
+            ?: parts.first()
+        // 只有百分比、没有可解析的指针时，落到该章开头，避免粗略比例把位置带到章中间。
         return BookProgress(
             name = book.name,
             author = book.author,
@@ -149,6 +194,40 @@ class EpubPositionMapper(
     }
 
     override fun paragraphKey(progress: BookProgress): String? = null
+
+    private fun percentageFor(chapter: BookChapter, chapterPos: Int): Double? {
+        val href = chapterHref(chapter)
+        val spineIndex = hrefs.indexOf(href)
+        if (spineIndex < 0 || totalBytes <= 0) return null
+        val docLength = docText(href).length.coerceAtLeast(1)
+        val chapterStart = chapterOffsetInDoc(chapter, href, docLength)
+        val offset = (chapterStart + chapterPos.coerceAtLeast(0)).coerceIn(0, docLength)
+        val fraction = offset.toDouble() / docLength
+        val absolute = cumulativeBytes[spineIndex] + fraction * (docBytes.getOrNull(spineIndex) ?: 0L)
+        return (absolute / totalBytes).coerceIn(0.0, 1.0)
+    }
+
+    private fun chapterOffsetInDoc(chapter: BookChapter, href: String, docLength: Int): Int {
+        val parts = allChapters.filter { chapterHref(it) == href }
+        if (parts.size <= 1) return 0
+        val plain = plainText(chapter) ?: return 0
+        val anchor = normalize(plain).take(ANCHOR_MAX_LENGTH)
+        if (anchor.isEmpty()) return 0
+        return docText(href).indexOf(anchor).coerceIn(0, docLength)
+    }
+
+    private fun docText(href: String): String {
+        return docPlainTextCache.getOrPut(href) {
+            normalize(spine.body(href)?.text().orEmpty())
+        }
+    }
+
+    private fun plainText(chapter: BookChapter): String? {
+        val text = chapterPlainTextCache.getOrPut(chapter.url) {
+            normalize(chapterContent(chapter)?.let { Jsoup.parse(it).text() }.orEmpty())
+        }
+        return text.takeIf { it.isNotEmpty() }
+    }
 
     private fun chapterHref(chapter: BookChapter): String =
         chapter.url.substringBeforeLast('#')
@@ -172,6 +251,21 @@ class EpubPositionMapper(
         return null
     }
 
+    /** 章节开头用标题或第一个含文本的块，保证落点和 KOReader 的 `.../h1[1]/text()[1].0` 一致。 */
+    private fun firstBlock(body: Element): Element? {
+        body.selectFirst("h1,h2,h3,h4,h5,h6")
+            ?.takeIf { normalize(it.text()).isNotEmpty() }
+            ?.let { return it }
+        for (element in body.getAllElements()) {
+            if (element === body) continue
+            val textNode = element.textNodes().firstOrNull {
+                normalize(it.text()).isNotEmpty()
+            } ?: continue
+            return nearestBlock(body, textNode)
+        }
+        return null
+    }
+
     private fun nearestBlock(body: Element, node: Node): Element? {
         var current: Element? = node.parent() as? Element
         while (current != null && current !== body) {
@@ -191,16 +285,22 @@ class EpubPositionMapper(
             val siblings = parent.children().filter { it.tagName().equals(name, true) }
             val index = siblings.indexOf(current)
             if (index < 0) return null
-            parts.add(if (siblings.size > 1) "$name[${index + 1}]" else name)
+            parts.add("$name[${index + 1}]")
             current = parent
         }
         if (current !== body) return null
         return parts.asReversed().joinToString("/") { it }
     }
 
-    private fun buildPointer(spineIndex: Int, path: String): String {
+    private fun buildPointer(spineIndex: Int, path: String, target: Element): String {
         val prefix = "/body/DocFragment[${spineIndex + 1}]/body"
-        return if (path.isEmpty()) prefix else "$prefix/$path"
+        if (path.isEmpty()) return prefix
+        // crengine 风格：能定位到文本节点时带上 text()[1].offset
+        return if (target.textNodes().isNotEmpty()) {
+            "$prefix/$path/text()[1].0"
+        } else {
+            "$prefix/$path"
+        }
     }
 
     private fun resolve(body: Element, pointer: XPointer): Node? {

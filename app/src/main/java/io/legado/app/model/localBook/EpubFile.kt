@@ -171,6 +171,15 @@ class EpubFile(var book: Book) : AutoCloseable {
         return Jsoup.parse(String(resource.data, mCharset)).body()
     }
 
+    /**
+     * spine 文档的字节数（UTF-8 原始数据）。
+     * crengine 的百分比按 spine 文本字节累计计算，KOReader / CrossPoint 都遵循这个模型。
+     */
+    fun getSpineByteLength(href: String): Long {
+        val resource = epubBookContents?.firstOrNull { it.href == href } ?: return 0L
+        return resource.data.size.toLong()
+    }
+
     fun getChapterSpineHref(chapter: BookChapter): String? =
         chapter.url.substringBeforeLast('#')
 
